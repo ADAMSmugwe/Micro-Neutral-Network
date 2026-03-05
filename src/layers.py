@@ -8,6 +8,8 @@ class Layer:
         self.inputs = None
         self.z = None
         self.a = None
+        self.dW = None
+        self.db = None
 
     def forward(self, inputs):
         self.inputs = inputs
@@ -23,3 +25,20 @@ class Layer:
         elif self.activation == 'tanh':
             return np.tanh(z)
         return z
+
+    def backward(self, dA):
+        if self.activation == 'relu':
+            dZ = dA * (self.z > 0)
+        elif self.activation == 'sigmoid':
+            dZ = dA * (self.a * (1 - self.a))
+        elif self.activation == 'tanh':
+            dZ = dA * (1 - self.a ** 2)
+        else:
+            dZ = dA
+
+        m = dA.shape[0]
+        self.dW = np.dot(self.inputs.T, dZ) / m
+        self.db = np.sum(dZ, axis=0, keepdims=True) / m
+
+        dA_prev = np.dot(dZ, self.weights.T)
+        return dA_prev
