@@ -2,9 +2,9 @@
 import numpy as np
 from .loss import mse_loss, mse_derivative, cross_entropy_loss, cross_entropy_derivative
 
-class Network:
-    def __init__(self, reg_lambda=0.0):
-        self.layers = []
+class network:
+    def __init__(self, layers=None, reg_lambda=0.0):
+        self.layers = layers if layers is not None else []
         self.loss_name = None
         self.loss_func = None
         self.loss_derivative = None
