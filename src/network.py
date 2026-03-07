@@ -48,14 +48,19 @@ class network:
                 if hasattr(layer, 'weights'):
                     layer.dW += self.reg_lambda * layer.weights
 
-    def update(self, lr=0.01):
+    def update(self, lr=0.01, momentum=0.0):
         for layer in self.layers:
             if hasattr(layer, 'weights'):
-                layer.weights -= lr * layer.dW
-                layer.biases -= lr * layer.db
+                layer.v_weights = momentum * layer.v_weights - lr * layer.dW
+                layer.v_biases = momentum * layer.v_biases - lr * layer.db
+                
+                layer.weights += layer.v_weights
+                layer.biases += layer.v_biases
 
-    def train(self, X, y, epochs=1000, lr=0.01, batch_size=32, verbose=True, print_every=100):
+    def train(self, X, y, epochs=1000, lr=0.01, momentum=0.0, batch_size=32, verbose=True, print_every=100):
         n_samples = X.shape[0]
+        history = []
+
         for epoch in range(epochs):
             indices = np.random.permutation(n_samples)
             X_shuffled = X[indices]
@@ -67,11 +72,12 @@ class network:
                 
                 y_pred = self.forward(X_batch)
                 self.backward(y_batch, y_pred)
-                self.update(lr)
+                self.update(lr, momentum)
             
             if verbose and epoch % print_every == 0:
                 full_pred = self.forward(X)
                 current_loss = self.loss(y, full_pred)
                 print(f"Epoch {epoch}, Loss: {current_loss:.6f}")
+                history.append(current_loss)
         
-        return self.loss(y, self.forward(X))
+        return history

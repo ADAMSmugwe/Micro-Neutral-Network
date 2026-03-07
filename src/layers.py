@@ -10,6 +10,8 @@ class Layer:
         self.a = None
         self.dW = None
         self.db = None
+        self.v_weights = np.zeros_like(self.weights)
+        self.v_biases = np.zeros_like(self.biases)
 
     def forward(self, inputs):
         self.inputs = inputs

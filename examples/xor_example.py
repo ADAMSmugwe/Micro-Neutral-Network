@@ -2,6 +2,7 @@
 import sys
 import os
 import numpy as np
+import matplotlib.pyplot as plt
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -12,18 +13,33 @@ from src.utils import generate_xor_data
 if __name__ == "__main__":
     X, y = generate_xor_data()
 
-    # Initialize network with L2 regularization
-    net = Network(reg_lambda=0.001)
-    net.add_layer(Layer(2, 4, 'tanh'))
-    net.add_layer(Layer(4, 1, 'sigmoid'))
-    net.set_loss('mse')
+    print("Training with SGD...")
+    net_sgd = Network(
+        layers=[Layer(2, 4, 'tanh'), Layer(4, 1, 'sigmoid')],
+        reg_lambda=0.001
+    )
+    net_sgd.set_loss('mse')
+    sgd_history = net_sgd.train(X, y, epochs=3000, lr=0.1, momentum=0.0, batch_size=4, print_every=1000)
 
-    # Train using mini-batches (batch_size=4 for XOR is full-batch)
-    net.train(X, y, epochs=5000, lr=1.0, batch_size=4, print_every=500)
-    
-    final_loss = net.loss(y, net.forward(X))
-    print(f"\nFinal loss: {final_loss:.6f}")
+    print("\nTraining with Momentum...")
+    net_momentum = Network(
+        layers=[Layer(2, 4, 'tanh'), Layer(4, 1, 'sigmoid')],
+        reg_lambda=0.001
+    )
+    net_momentum.set_loss('mse')
+    momentum_history = net_momentum.train(X, y, epochs=3000, lr=0.1, momentum=0.9, batch_size=4, print_every=1000)
 
-    preds = net.forward(X)
-    print("Predictions:\n", preds)
+    plt.figure(figsize=(10, 6))
+    plt.plot(sgd_history, label='SGD Loss')
+    plt.plot(momentum_history, label='Momentum Loss')
+    plt.title('Loss Curve Comparison: SGD vs. Momentum')
+    plt.xlabel('Epoch (x1000)')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    print("\nFinal Predictions (Momentum):")
+    preds = net_momentum.forward(X)
+    print(preds)
     print("Binary Predictions:\n", (preds > 0.5).astype(int))
