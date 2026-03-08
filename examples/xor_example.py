@@ -13,33 +13,35 @@ from src.utils import generate_xor_data
 if __name__ == "__main__":
     X, y = generate_xor_data()
 
-    print("Training with SGD...")
-    net_sgd = Network(
-        layers=[Layer(2, 4, 'tanh'), Layer(4, 1, 'sigmoid')],
-        reg_lambda=0.001
+    net = Network(
+        layers=[
+            Layer(2, 4, 'tanh', dropout_rate=0.0),
+            Layer(4, 1, 'sigmoid', dropout_rate=0.0)
+        ],
+        reg_lambda=0.0
     )
-    net_sgd.set_loss('mse')
-    sgd_history = net_sgd.train(X, y, epochs=3000, lr=0.1, momentum=0.0, batch_size=4, print_every=1000)
+    net.set_loss("mse")
 
-    print("\nTraining with Momentum...")
-    net_momentum = Network(
-        layers=[Layer(2, 4, 'tanh'), Layer(4, 1, 'sigmoid')],
-        reg_lambda=0.001
+    history = net.train(
+        X,
+        y,
+        epochs=5000,
+        lr=1.0,
+        momentum=0.9,
+        batch_size=4,
+        verbose=True,
+        print_every=500,
     )
-    net_momentum.set_loss('mse')
-    momentum_history = net_momentum.train(X, y, epochs=3000, lr=0.1, momentum=0.9, batch_size=4, print_every=1000)
 
-    plt.figure(figsize=(10, 6))
-    plt.plot(sgd_history, label='SGD Loss')
-    plt.plot(momentum_history, label='Momentum Loss')
-    plt.title('Loss Curve Comparison: SGD vs. Momentum')
-    plt.xlabel('Epoch (x1000)')
-    plt.ylabel('Loss')
-    plt.legend()
+    plt.plot(history)
+    plt.title("XOR training loss (no dropout)")
+    plt.xlabel("Checkpoint")
+    plt.ylabel("Loss")
     plt.grid(True)
     plt.show()
 
-    print("\nFinal Predictions (Momentum):")
-    preds = net_momentum.forward(X)
-    print(preds)
-    print("Binary Predictions:\n", (preds > 0.5).astype(int))
+    net.eval_mode()
+    preds = net.forward(X)
+    print("Final loss:", net.loss(y, preds))
+    print("Preds:\n", preds)
+    print("Binary:\n", (preds > 0.5).astype(int))

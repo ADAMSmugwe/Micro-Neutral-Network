@@ -2,13 +2,21 @@
 import numpy as np
 from .loss import mse_loss, mse_derivative, cross_entropy_loss, cross_entropy_derivative
 
-class network:
+class Network:
     def __init__(self, layers=None, reg_lambda=0.0):
         self.layers = layers if layers is not None else []
         self.loss_name = None
         self.loss_func = None
         self.loss_derivative = None
         self.reg_lambda = reg_lambda
+
+    def train_mode(self):
+        for layer in self.layers:
+            layer.training = True
+
+    def eval_mode(self):
+        for layer in self.layers:
+            layer.training = False
 
     def add_layer(self, layer):
         self.layers.append(layer)
@@ -58,6 +66,7 @@ class network:
                 layer.biases += layer.v_biases
 
     def train(self, X, y, epochs=1000, lr=0.01, momentum=0.0, batch_size=32, verbose=True, print_every=100):
+        self.train_mode()
         n_samples = X.shape[0]
         history = []
 
