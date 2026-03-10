@@ -1,12 +1,37 @@
 import numpy as np
 
 class Layer:
-    def __init__(self, n_inputs, n_neurons, activation='relu', dropout_rate=0.0):
-        self.weights = np.random.randn(n_inputs, n_neurons) * 0.1
-        self.biases = np.zeros((1, n_neurons))
+    def __init__(self, n_inputs, n_neurons, activation='relu', dropout_rate=0.0, init_method='auto'):
         self.activation = activation
         self.dropout_rate = dropout_rate
         self.training = True
+        
+        if init_method == 'auto':
+            if activation in ['relu', 'leaky_relu']:
+                init_method = 'he'
+            elif activation in ['tanh', 'sigmoid']:
+                init_method = 'xavier'
+            else:
+                init_method = 'he'
+        
+        if init_method == 'xavier':
+            limit = np.sqrt(6.0 / (n_inputs + n_neurons))
+            self.weights = np.random.uniform(-limit, limit, (n_inputs, n_neurons))
+        elif init_method == 'xavier_normal':
+            std = np.sqrt(2.0 / (n_inputs + n_neurons))
+            self.weights = np.random.randn(n_inputs, n_neurons) * std
+        elif init_method == 'he':
+            std = np.sqrt(2.0 / n_inputs)
+            self.weights = np.random.randn(n_inputs, n_neurons) * std
+        elif init_method == 'he_uniform':
+            limit = np.sqrt(6.0 / n_inputs)
+            self.weights = np.random.uniform(-limit, limit, (n_inputs, n_neurons))
+        elif init_method == 'random':
+            self.weights = np.random.randn(n_inputs, n_neurons) * 0.01
+        else:
+            raise ValueError(f"Unknown init_method: {init_method}")
+        
+        self.biases = np.zeros((1, n_neurons))
         self.inputs = None
         self.z = None
         self.a = None
