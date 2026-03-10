@@ -55,3 +55,64 @@ class Layer:
 
         dA_prev = np.dot(dZ, self.weights.T)
         return dA_prev
+
+
+class BatchNorm:
+    def __init__(self, n_features, eps=1e-8, momentum=0.9):
+        self.gamma = np.ones((1, n_features))
+        self.beta = np.zeros((1, n_features))
+        self.eps = eps
+        self.momentum = momentum
+        
+        self.running_mean = np.zeros((1, n_features))
+        self.running_var = np.ones((1, n_features))
+        
+        self.training = True
+        
+        self.x_norm = None
+        self.x_centered = None
+        self.std = None
+        self.var = None
+        self.mean = None
+        self.batch_size = None
+        
+        self.dgamma = None
+        self.dbeta = None
+        self.v_gamma = np.zeros_like(self.gamma)
+        self.v_beta = np.zeros_like(self.beta)
+
+    def forward(self, Z):
+        if self.training:
+            self.batch_size = Z.shape[0]
+            self.mean = np.mean(Z, axis=0, keepdims=True)
+            self.var = np.var(Z, axis=0, keepdims=True)
+            
+            self.x_centered = Z - self.mean
+            self.std = np.sqrt(self.var + self.eps)
+            self.x_norm = self.x_centered / self.std
+            
+            self.running_mean = self.momentum * self.running_mean + (1 - self.momentum) * self.mean
+            self.running_var = self.momentum * self.running_var + (1 - self.momentum) * self.var
+            
+            out = self.gamma * self.x_norm + self.beta
+        else:
+            x_norm = (Z - self.running_mean) / np.sqrt(self.running_var + self.eps)
+            out = self.gamma * x_norm + self.beta
+        return out
+
+    def backward(self, dout):
+        if self.training:
+            self.dgamma = np.sum(dout * self.x_norm, axis=0, keepdims=True)
+            self.dbeta = np.sum(dout, axis=0, keepdims=True)
+            
+            dx_norm = dout * self.gamma
+            
+            dvar = np.sum(dx_norm * self.x_centered * -0.5 * self.std ** (-3), axis=0, keepdims=True)
+            dmean = np.sum(dx_norm * -1 / self.std, axis=0, keepdims=True) + dvar * np.mean(-2 * self.x_centered, axis=0, keepdims=True)
+            
+            dZ = (dx_norm / self.std) + (dvar * 2 * self.x_centered / self.batch_size) + (dmean / self.batch_size)
+            
+        else:
+            dZ = dout * self.gamma / np.sqrt(self.running_var + self.eps)
+            
+        return dZ

@@ -64,6 +64,13 @@ class Network:
                 
                 layer.weights += layer.v_weights
                 layer.biases += layer.v_biases
+            
+            if hasattr(layer, 'gamma'):
+                layer.v_gamma = momentum * layer.v_gamma - lr * layer.dgamma
+                layer.v_beta = momentum * layer.v_beta - lr * layer.dbeta
+                
+                layer.gamma += layer.v_gamma
+                layer.beta += layer.v_beta
 
     def train(self, X, y, epochs=1000, lr=0.01, momentum=0.0, batch_size=32, verbose=True, print_every=100):
         self.train_mode()
