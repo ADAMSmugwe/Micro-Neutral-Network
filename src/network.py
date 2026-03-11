@@ -72,12 +72,14 @@ class Network:
                 layer.gamma += layer.v_gamma
                 layer.beta += layer.v_beta
 
-    def train(self, X, y, epochs=1000, lr=0.01, momentum=0.0, batch_size=32, verbose=True, print_every=100):
+    def train(self, X, y, epochs=1000, lr=0.01, momentum=0.0, batch_size=32, verbose=True, print_every=100, lr_scheduler=None):
         self.train_mode()
         n_samples = X.shape[0]
         history = []
 
         for epoch in range(epochs):
+            if lr_scheduler is not None:
+                lr = lr_scheduler.get_lr(epoch)
             indices = np.random.permutation(n_samples)
             X_shuffled = X[indices]
             y_shuffled = y[indices]
@@ -93,7 +95,7 @@ class Network:
             if verbose and epoch % print_every == 0:
                 full_pred = self.forward(X)
                 current_loss = self.loss(y, full_pred)
-                print(f"Epoch {epoch}, Loss: {current_loss:.6f}")
+                print(f"Epoch {epoch}, Loss: {current_loss:.6f}, LR: {lr:.6f}")
                 history.append(current_loss)
         
         return history
