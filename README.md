@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Daily Commit Automation
 
 This project automates daily GitHub commits to keep your contribution graph "Dark Green".
@@ -28,9 +29,6 @@ git push -u origin main
 
 # Daily Commit Automation
 
-This project automates daily GitHub commits to keep your contribution graph "Dark Green".
-
-## Setup Guide
 
 ### 1. Clone the Repo
 
@@ -43,18 +41,10 @@ cd daily-commit
 
 ```
 ```
-git add .
-git commit -m "Initial commit"
-```
 
 ### 3. Link to Remote GitHub Repo
-
-```
-python mass_commit.py --dry-run
 git branch -M main
 git push -u origin main
-```
-
 ### 4. Git Credentials
 
 - Use `git config --global credential.helper cache` to cache credentials.
@@ -122,3 +112,6 @@ python mass_commit.py
 
 - If you see authentication errors, check your Git credentials.
 - If the workflow fails, check the Actions tab for logs.
+=======
+# daily-commit
+>>>>>>> origin/main
