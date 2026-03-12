@@ -37,8 +37,14 @@ class Layer:
         self.a = None
         self.dW = None
         self.db = None
-        self.v_weights = np.zeros_like(self.weights)
-        self.v_biases = np.zeros_like(self.biases)
+    self.v_weights = np.zeros_like(self.weights)
+    self.v_biases = np.zeros_like(self.biases)
+    # Adam optimizer state
+    self.m_weights = np.zeros_like(self.weights)
+    self.vw_weights = np.zeros_like(self.weights)
+    self.m_biases = np.zeros_like(self.biases)
+    self.vw_biases = np.zeros_like(self.biases)
+    self.t = 0  # timestep for Adam
         self.dropout_mask = None
 
     def forward(self, inputs):

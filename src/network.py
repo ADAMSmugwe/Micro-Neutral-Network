@@ -56,19 +56,36 @@ class Network:
                 if hasattr(layer, 'weights'):
                     layer.dW += self.reg_lambda * layer.weights
 
-    def update(self, lr=0.01, momentum=0.0):
+    def update(self, lr=0.01, momentum=0.0, optimizer='sgd', beta1=0.9, beta2=0.999, eps=1e-8):
         for layer in self.layers:
             if hasattr(layer, 'weights'):
-                layer.v_weights = momentum * layer.v_weights - lr * layer.dW
-                layer.v_biases = momentum * layer.v_biases - lr * layer.db
-                
-                layer.weights += layer.v_weights
-                layer.biases += layer.v_biases
-            
+                if optimizer == 'adam':
+                    # Adam optimizer
+                    layer.t += 1
+                    # Weights
+                    g = layer.dW
+                    layer.m_weights = beta1 * layer.m_weights + (1 - beta1) * g
+                    layer.vw_weights = beta2 * layer.vw_weights + (1 - beta2) * (g ** 2)
+                    m_hat = layer.m_weights / (1 - beta1 ** layer.t)
+                    v_hat = layer.vw_weights / (1 - beta2 ** layer.t)
+                    layer.weights -= lr * m_hat / (np.sqrt(v_hat) + eps)
+                    # Biases
+                    g_b = layer.db
+                    layer.m_biases = beta1 * layer.m_biases + (1 - beta1) * g_b
+                    layer.vw_biases = beta2 * layer.vw_biases + (1 - beta2) * (g_b ** 2)
+                    m_hat_b = layer.m_biases / (1 - beta1 ** layer.t)
+                    v_hat_b = layer.vw_biases / (1 - beta2 ** layer.t)
+                    layer.biases -= lr * m_hat_b / (np.sqrt(v_hat_b) + eps)
+                else:
+                    # SGD or Momentum
+                    layer.v_weights = momentum * layer.v_weights - lr * layer.dW
+                    layer.v_biases = momentum * layer.v_biases - lr * layer.db
+                    layer.weights += layer.v_weights
+                    layer.biases += layer.v_biases
             if hasattr(layer, 'gamma'):
+                # BatchNorm params (still use momentum/SGD)
                 layer.v_gamma = momentum * layer.v_gamma - lr * layer.dgamma
                 layer.v_beta = momentum * layer.v_beta - lr * layer.dbeta
-                
                 layer.gamma += layer.v_gamma
                 layer.beta += layer.v_beta
 
