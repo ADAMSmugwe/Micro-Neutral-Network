@@ -3,6 +3,48 @@ import numpy as np
 from .loss import mse_loss, mse_derivative, cross_entropy_loss, cross_entropy_derivative
 
 class Network:
+    def save(self, filepath):
+        import pickle
+        config = [layer.get_config() for layer in self.layers]
+        params = [layer.get_parameters() for layer in self.layers]
+        data = {
+            'config': config,
+            'params': params,
+            'loss': self.loss_name
+        }
+        with open(filepath, 'wb') as f:
+            pickle.dump(data, f)
+        print(f"Model saved to {filepath}")
+
+    @classmethod
+    def load(cls, filepath):
+        import pickle
+        from src.layers import Layer, BatchNorm
+        with open(filepath, 'rb') as f:
+            data = pickle.load(f)
+        network = cls()
+        network.set_loss(data.get('loss', 'mse'))
+        for config in data['config']:
+            if config['type'] == 'dense':
+                layer = Layer(
+                    config['n_inputs'],
+                    config['n_neurons'],
+                    config['activation'],
+                    dropout_rate=config.get('dropout_rate', 0.0)
+                )
+            elif config['type'] == 'batchnorm':
+                layer = BatchNorm(
+                    config['n_features'],
+                    config['eps'],
+                    config['momentum']
+                )
+            else:
+                raise ValueError(f"Unknown layer type: {config['type']}")
+            network.layers.append(layer)
+        for layer, params in zip(network.layers, data['params']):
+            layer.set_parameters(params)
+        print(f"Model loaded from {filepath}")
+        return network
     def __init__(self, layers=None, reg_lambda=0.0):
         self.layers = layers if layers is not None else []
         self.loss_name = None

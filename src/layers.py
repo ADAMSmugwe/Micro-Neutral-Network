@@ -1,6 +1,43 @@
 import numpy as np
 
 class Layer:
+    def get_config(self):
+        return {
+            'type': 'dense',
+            'n_inputs': self.weights.shape[0],
+            'n_neurons': self.weights.shape[1],
+            'activation': self.activation,
+            'dropout_rate': getattr(self, 'dropout_rate', 0.0)
+        }
+
+    def get_parameters(self):
+        params = {
+            'weights': self.weights,
+            'biases': self.biases
+        }
+        if hasattr(self, 'm_weights'):
+            params.update({
+                'm_weights': self.m_weights,
+                'v_weights': getattr(self, 'v_weights', None),
+                'm_biases': self.m_biases,
+                'v_biases': getattr(self, 'v_biases', None),
+                't': getattr(self, 't', 0)
+            })
+        return params
+
+    def set_parameters(self, params):
+        self.weights = params['weights']
+        self.biases = params['biases']
+        if 'm_weights' in params and params['m_weights'] is not None:
+            self.m_weights = params['m_weights']
+        if 'v_weights' in params and params['v_weights'] is not None:
+            self.v_weights = params['v_weights']
+        if 'm_biases' in params and params['m_biases'] is not None:
+            self.m_biases = params['m_biases']
+        if 'v_biases' in params and params['v_biases'] is not None:
+            self.v_biases = params['v_biases']
+        if 't' in params:
+            self.t = params['t']
     def __init__(self, n_inputs, n_neurons, activation='relu', dropout_rate=0.0, init_method='auto'):
         self.activation = activation
         self.dropout_rate = dropout_rate
@@ -89,6 +126,27 @@ class Layer:
 
 
 class BatchNorm:
+    def get_config(self):
+        return {
+            'type': 'batchnorm',
+            'n_features': self.gamma.shape[1],
+            'eps': self.eps,
+            'momentum': self.momentum
+        }
+
+    def get_parameters(self):
+        return {
+            'gamma': self.gamma,
+            'beta': self.beta,
+            'running_mean': self.running_mean,
+            'running_var': self.running_var
+        }
+
+    def set_parameters(self, params):
+        self.gamma = params['gamma']
+        self.beta = params['beta']
+        self.running_mean = params['running_mean']
+        self.running_var = params['running_var']
     def __init__(self, n_features, eps=1e-8, momentum=0.9):
         self.gamma = np.ones((1, n_features))
         self.beta = np.zeros((1, n_features))
