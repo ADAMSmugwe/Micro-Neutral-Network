@@ -42,7 +42,7 @@ class Layer:
         self.activation = activation
         self.dropout_rate = dropout_rate
         self.training = True
-        
+
         if init_method == 'auto':
             if activation in ['relu', 'leaky_relu']:
                 init_method = 'he'
@@ -50,7 +50,7 @@ class Layer:
                 init_method = 'xavier'
             else:
                 init_method = 'he'
-        
+
         if init_method == 'xavier':
             limit = np.sqrt(6.0 / (n_inputs + n_neurons))
             self.weights = np.random.uniform(-limit, limit, (n_inputs, n_neurons))
@@ -67,21 +67,21 @@ class Layer:
             self.weights = np.random.randn(n_inputs, n_neurons) * 0.01
         else:
             raise ValueError(f"Unknown init_method: {init_method}")
-        
+
         self.biases = np.zeros((1, n_neurons))
         self.inputs = None
         self.z = None
         self.a = None
         self.dW = None
         self.db = None
-    self.v_weights = np.zeros_like(self.weights)
-    self.v_biases = np.zeros_like(self.biases)
-    # Adam optimizer state
-    self.m_weights = np.zeros_like(self.weights)
-    self.vw_weights = np.zeros_like(self.weights)
-    self.m_biases = np.zeros_like(self.biases)
-    self.vw_biases = np.zeros_like(self.biases)
-    self.t = 0  # timestep for Adam
+        self.v_weights = np.zeros_like(self.weights)
+        self.v_biases = np.zeros_like(self.biases)
+        # Adam optimizer state
+        self.m_weights = np.zeros_like(self.weights)
+        self.vw_weights = np.zeros_like(self.weights)
+        self.m_biases = np.zeros_like(self.biases)
+        self.vw_biases = np.zeros_like(self.biases)
+        self.t = 0  # timestep for Adam
         self.dropout_mask = None
 
     def forward(self, inputs):
