@@ -122,8 +122,8 @@ class Layer:
     self.dW = np.dot(self.inputs.T, dZ) / (m * n)
     self.db = np.sum(dZ, axis=0, keepdims=True) / (m * n)
 
-        dA_prev = np.dot(dZ, self.weights.T)
-        return dA_prev
+    dA_prev = np.dot(dZ, self.weights.T)
+    return dA_prev
 
 
 class BatchNorm:
