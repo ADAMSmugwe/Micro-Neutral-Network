@@ -117,9 +117,10 @@ class Layer:
         else:
             dZ = dA
 
-        m = dA.shape[0]
-        self.dW = np.dot(self.inputs.T, dZ) / m
-        self.db = np.sum(dZ, axis=0, keepdims=True) / m
+    m = dA.shape[0]
+    n = dA.shape[1]
+    self.dW = np.dot(self.inputs.T, dZ) / (m * n)
+    self.db = np.sum(dZ, axis=0, keepdims=True) / (m * n)
 
         dA_prev = np.dot(dZ, self.weights.T)
         return dA_prev
