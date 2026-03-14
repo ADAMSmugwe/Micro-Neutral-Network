@@ -4,7 +4,7 @@ def mse_loss(y_true, y_pred):
     return np.mean((y_true - y_pred) ** 2)
 
 def mse_derivative(y_true, y_pred):
-    return 2 * (y_pred - y_true) / y_true.shape[0]
+    return 2 * (y_pred - y_true) / y_true.size
 
 def cross_entropy_loss(y_true, y_pred):
     eps = 1e-12
