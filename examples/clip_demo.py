@@ -24,7 +24,10 @@ for clip_type, clip_value in [(None, None), ('norm', 1.0), ('value', 1.0)]:
     print(f"Training with {label}...")
     history = net.train(X, y, epochs=30, lr=0.01, batch_size=64, verbose=False, clip_type=clip_type, clip_value=clip_value or 1.0)
     results[label] = history
-    print(f"  Final loss: {history[-1]:.4f}")
+    if not history:
+        print(f"  [WARNING] No loss history recorded for {label}. Training may have failed or no epochs were run.")
+    else:
+        print(f"  Final loss: {history[-1]:.4f}")
 
 plt.figure(figsize=(8,5))
 for label, hist in results.items():
