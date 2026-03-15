@@ -173,10 +173,11 @@ class Network:
                     self.clip_gradients_norm(clip_value)
                 self.update(lr, momentum)
 
+            # Always record loss every epoch
+            full_pred = self.forward(X)
+            current_loss = self.loss(y, full_pred)
             if verbose and epoch % print_every == 0:
-                full_pred = self.forward(X)
-                current_loss = self.loss(y, full_pred)
                 print(f"Epoch {epoch}, Loss: {current_loss:.6f}, LR: {lr:.6f}")
-                history.append(current_loss)
+            history.append(current_loss)
 
         return history
