@@ -3,6 +3,23 @@ import numpy as np
 from .loss import mse_loss, mse_derivative, cross_entropy_loss, cross_entropy_derivative
 
 class Network:
+    def clip_gradients_value(self, clip_value=1.0):
+        for layer in self.layers:
+            if hasattr(layer, 'dW') and layer.dW is not None:
+                layer.dW = np.clip(layer.dW, -clip_value, clip_value)
+            if hasattr(layer, 'db') and layer.db is not None:
+                layer.db = np.clip(layer.db, -clip_value, clip_value)
+
+    def clip_gradients_norm(self, max_norm=1.0):
+        for layer in self.layers:
+            if hasattr(layer, 'dW') and layer.dW is not None:
+                norm_w = np.linalg.norm(layer.dW)
+                if norm_w > max_norm:
+                    layer.dW *= max_norm / norm_w
+            if hasattr(layer, 'db') and layer.db is not None:
+                norm_b = np.linalg.norm(layer.db)
+                if norm_b > max_norm:
+                    layer.db *= max_norm / norm_b
     def save(self, filepath):
         import pickle
         config = [layer.get_config() for layer in self.layers]
@@ -131,7 +148,7 @@ class Network:
                 layer.gamma += layer.v_gamma
                 layer.beta += layer.v_beta
 
-    def train(self, X, y, epochs=1000, lr=0.01, momentum=0.0, batch_size=32, verbose=True, print_every=100, lr_scheduler=None):
+    def train(self, X, y, epochs=1000, lr=0.01, momentum=0.0, batch_size=32, verbose=True, print_every=100, lr_scheduler=None, clip_type=None, clip_value=1.0):
         self.train_mode()
         n_samples = X.shape[0]
         history = []
@@ -142,19 +159,24 @@ class Network:
             indices = np.random.permutation(n_samples)
             X_shuffled = X[indices]
             y_shuffled = y[indices]
-            
+
             for i in range(0, n_samples, batch_size):
                 X_batch = X_shuffled[i:i+batch_size]
                 y_batch = y_shuffled[i:i+batch_size]
-                
+
                 y_pred = self.forward(X_batch)
                 self.backward(y_batch, y_pred)
+                # Gradient clipping
+                if clip_type == 'value':
+                    self.clip_gradients_value(clip_value)
+                elif clip_type == 'norm':
+                    self.clip_gradients_norm(clip_value)
                 self.update(lr, momentum)
-            
+
             if verbose and epoch % print_every == 0:
                 full_pred = self.forward(X)
                 current_loss = self.loss(y, full_pred)
                 print(f"Epoch {epoch}, Loss: {current_loss:.6f}, LR: {lr:.6f}")
                 history.append(current_loss)
-        
+
         return history

@@ -104,7 +104,8 @@ class Layer:
             return np.tanh(z)
         return z
 
-    def backward(self, dA):
+    def backward(self, dA, divisor=None):
+        print(f"[DEBUG] dA shape: {dA.shape}")
         if self.training and self.dropout_rate > 0:
             dA *= self.dropout_mask / (1 - self.dropout_rate)
 
@@ -117,13 +118,19 @@ class Layer:
         else:
             dZ = dA
 
-    m = dA.shape[0]
-    n = dA.shape[1]
-    self.dW = np.dot(self.inputs.T, dZ) / (m * n)
-    self.db = np.sum(dZ, axis=0, keepdims=True) / (m * n)
+        print(f"[DEBUG] dZ shape: {dZ.shape}")
+        print(f"[DEBUG] self.inputs shape: {self.inputs.shape}")
+        m = dA.shape[0]
+        n = dA.shape[1]
+        if divisor is None:
+            divisor = m * n
+        self.dW = np.dot(self.inputs.T, dZ) / divisor
+        self.db = np.sum(dZ, axis=0, keepdims=True) / divisor
+        print(f"[DEBUG] self.dW shape: {self.dW.shape}, self.db shape: {self.db.shape}")
 
-    dA_prev = np.dot(dZ, self.weights.T)
-    return dA_prev
+        dA_prev = np.dot(dZ, self.weights.T)
+        print(f"[DEBUG] dA_prev shape: {dA_prev.shape}")
+        return dA_prev
 
 
 class BatchNorm:
