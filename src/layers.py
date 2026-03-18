@@ -102,6 +102,9 @@ class Layer:
             return 1 / (1 + np.exp(-z))
         elif self.activation == 'tanh':
             return np.tanh(z)
+        elif self.activation == 'softmax':
+            e = np.exp(z - np.max(z, axis=1, keepdims=True))
+            return e / np.sum(e, axis=1, keepdims=True)
         return z
 
     def backward(self, dA, divisor=None):
@@ -114,6 +117,8 @@ class Layer:
             dZ = dA * (self.a * (1 - self.a))
         elif self.activation == 'tanh':
             dZ = dA * (1 - self.a**2)
+        elif self.activation == 'softmax':
+            dZ = dA
         else:
             dZ = dA
 
@@ -142,6 +147,8 @@ class Conv2D:
         self.d_biases = None
         self._X_pad = None
         self._col   = None
+        self.v_filters = np.zeros_like(self.filters)
+        self.v_biases  = np.zeros_like(self.biases)
 
     def forward(self, X, use_im2col=True):
         self._X_orig = X
@@ -244,6 +251,64 @@ class Conv2D:
         if use_im2col and self._col is not None:
             return self._backward_im2col(d_out)
         return self._backward_naive(d_out)
+
+
+class MaxPool2D:
+    def __init__(self, pool_size=2, stride=2):
+        self.pool_size = pool_size
+        self.stride = stride
+        self._mask = None
+        self._input_shape = None
+
+    def forward(self, X):
+        batch, h, w, c = X.shape
+        p, s = self.pool_size, self.stride
+        out_h = (h - p) // s + 1
+        out_w = (w - p) // s + 1
+        self._input_shape = X.shape
+        self._mask = np.zeros_like(X)
+        out = np.zeros((batch, out_h, out_w, c))
+        b_idx = np.arange(batch)[:, None]
+        c_idx = np.arange(c)[None, :]
+        for i in range(out_h):
+            for j in range(out_w):
+                h_s, w_s = i * s, j * s
+                window = X[:, h_s:h_s + p, w_s:w_s + p, :]
+                flat = window.reshape(batch, p * p, c)
+                idx = np.argmax(flat, axis=1)
+                out[:, i, j, :] = flat[b_idx, idx, c_idx]
+                self._mask[b_idx, h_s + idx // p, w_s + idx % p, c_idx] = 1
+        return out
+
+    def backward(self, d_out):
+        batch, out_h, out_w, c = d_out.shape
+        p, s = self.pool_size, self.stride
+        d_X = np.zeros(self._input_shape)
+        for i in range(out_h):
+            for j in range(out_w):
+                h_s, w_s = i * s, j * s
+                d_X[:, h_s:h_s + p, w_s:w_s + p, :] += (
+                    self._mask[:, h_s:h_s + p, w_s:w_s + p, :] * d_out[:, i:i + 1, j:j + 1, :]
+                )
+        return d_X
+
+
+class Flatten:
+    def forward(self, X):
+        self._original_shape = X.shape
+        return X.reshape(X.shape[0], -1)
+
+    def backward(self, d_out):
+        return d_out.reshape(self._original_shape)
+
+
+class ReLU:
+    def forward(self, X):
+        self._mask = X > 0
+        return np.maximum(0, X)
+
+    def backward(self, d_out):
+        return d_out * self._mask
 
 
 class BatchNorm:

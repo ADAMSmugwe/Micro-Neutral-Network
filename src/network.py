@@ -71,11 +71,13 @@ class Network:
 
     def train_mode(self):
         for layer in self.layers:
-            layer.training = True
+            if hasattr(layer, 'training'):
+                layer.training = True
 
     def eval_mode(self):
         for layer in self.layers:
-            layer.training = False
+            if hasattr(layer, 'training'):
+                layer.training = False
 
     def add_layer(self, layer):
         self.layers.append(layer)
@@ -141,6 +143,11 @@ class Network:
                     layer.v_biases = momentum * layer.v_biases - lr * layer.db
                     layer.weights += layer.v_weights
                     layer.biases += layer.v_biases
+            if hasattr(layer, 'filters') and layer.d_filters is not None:
+                layer.v_filters = momentum * layer.v_filters - lr * layer.d_filters
+                layer.v_biases  = momentum * layer.v_biases  - lr * layer.d_biases
+                layer.filters  += layer.v_filters
+                layer.biases   += layer.v_biases
             if hasattr(layer, 'gamma'):
                 # BatchNorm params (still use momentum/SGD)
                 layer.v_gamma = momentum * layer.v_gamma - lr * layer.dgamma
