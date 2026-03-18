@@ -27,14 +27,12 @@ def gradient_check():
     X = np.array([[0, 0], [0, 1], [1, 0], [1, 1]])
     y = np.array([[0], [1], [1], [0]])
 
-    # ── Summed-loss sanity check ──────────────────────────────────────────────
     def mse_loss_sum(y_true, y_pred):
         return np.sum((y_true - y_pred) ** 2)
 
     def mse_derivative_sum(y_true, y_pred):
         return 2 * (y_pred - y_true)
 
-    print("[DEBUG] Testing with summed loss (no averaging)...")
     net_sum = Network()
     net_sum.add_layer(Layer(2, 3, 'tanh', dropout_rate=0.0))
     net_sum.add_layer(Layer(3, 1, 'sigmoid', dropout_rate=0.0))
@@ -58,7 +56,6 @@ def gradient_check():
     rel_diff = np.abs(analytical_grad - num_grad) / (np.abs(analytical_grad) + np.abs(num_grad) + 1e-8)
     print(f"[SUM LOSS] analytical={analytical_grad:.6e}, numerical={num_grad:.6e}, rel diff={rel_diff:.2e}")
 
-    # ── Main gradient check ───────────────────────────────────────────────────
     net = Network()
     net.add_layer(Layer(2, 3, 'tanh', dropout_rate=0.0))
     net.add_layer(Layer(3, 1, 'sigmoid', dropout_rate=0.0))

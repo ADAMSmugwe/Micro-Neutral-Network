@@ -1,10 +1,3 @@
-"""
-Day 15: Conv2D Demo
-Tests the Conv2D layer with a small synthetic image and verifies shapes,
-compares naive vs im2col forward passes, runs a backward pass, and
-optionally visualizes filters / feature maps.
-"""
-
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -14,7 +7,6 @@ from src.layers import Conv2D
 
 np.random.seed(42)
 
-# ── 1. Basic shape check ──────────────────────────────────────────────────────
 print("=" * 60)
 print("1. Shape verification")
 print("=" * 60)
@@ -28,8 +20,8 @@ conv = Conv2D(in_channels=in_c, out_channels=out_c, filter_size=f, stride=1, pad
 out_im2col = conv.forward(X, use_im2col=True)
 out_naive  = conv.forward(X, use_im2col=False)
 
-expected_h = (H - f) // 1 + 1   # 6
-expected_w = (W - f) // 1 + 1   # 6
+expected_h = (H - f) // 1 + 1
+expected_w = (W - f) // 1 + 1
 
 print(f"Input shape      : {X.shape}")
 print(f"Filter shape     : {conv.filters.shape}")
@@ -37,7 +29,6 @@ print(f"Output shape     : {out_im2col.shape}  (expected {(batch_size, expected_
 assert out_im2col.shape == (batch_size, expected_h, expected_w, out_c), "Shape mismatch!"
 print("Shape check      : PASSED")
 
-# ── 2. Naive vs im2col agreement ─────────────────────────────────────────────
 print()
 print("=" * 60)
 print("2. Naive vs im2col numerical agreement")
@@ -48,7 +39,6 @@ print(f"Max absolute diff: {max_diff:.2e}  (should be < 1e-10)")
 assert max_diff < 1e-10, f"Mismatch between naive and im2col: {max_diff}"
 print("Agreement check  : PASSED")
 
-# ── 3. Stride test ────────────────────────────────────────────────────────────
 print()
 print("=" * 60)
 print("3. Stride = 2")
@@ -56,13 +46,12 @@ print("=" * 60)
 
 conv_s2 = Conv2D(in_channels=in_c, out_channels=out_c, filter_size=f, stride=2, padding=0)
 out_s2 = conv_s2.forward(X)
-exp_h2 = (H - f) // 2 + 1   # 3
-exp_w2 = (W - f) // 2 + 1   # 3
+exp_h2 = (H - f) // 2 + 1
+exp_w2 = (W - f) // 2 + 1
 print(f"Output shape (stride=2): {out_s2.shape}  (expected {(batch_size, exp_h2, exp_w2, out_c)})")
 assert out_s2.shape == (batch_size, exp_h2, exp_w2, out_c), "Stride shape mismatch!"
 print("Stride check     : PASSED")
 
-# ── 4. Padding test (same-like) ───────────────────────────────────────────────
 print()
 print("=" * 60)
 print("4. Padding = 1  (output same spatial size as input)")
@@ -74,14 +63,13 @@ print(f"Output shape (pad=1): {out_p.shape}  (expected {(batch_size, H, W, out_c
 assert out_p.shape == (batch_size, H, W, out_c), "Padding shape mismatch!"
 print("Padding check    : PASSED")
 
-# ── 5. Backward pass ─────────────────────────────────────────────────────────
 print()
 print("=" * 60)
 print("5. Backward pass – gradient shape check")
 print("=" * 60)
 
 conv_bwd = Conv2D(in_channels=in_c, out_channels=out_c, filter_size=f, stride=1, padding=0)
-out_bwd = conv_bwd.forward(X, use_im2col=False)   # use naive so cache is set
+out_bwd = conv_bwd.forward(X, use_im2col=False)
 d_out = np.random.randn(*out_bwd.shape)
 d_X = conv_bwd.backward(d_out)
 
@@ -93,7 +81,6 @@ assert conv_bwd.d_filters.shape == conv_bwd.filters.shape, "d_filters shape mism
 assert d_X.shape == X.shape, "d_X shape mismatch!"
 print("Backward check : PASSED")
 
-# ── 6. Numerical gradient check ───────────────────────────────────────────────
 print()
 print("=" * 60)
 print("6. Numerical gradient check (d_filters)")
@@ -106,13 +93,11 @@ X_small = np.random.randn(1, 4, 4, 1)
 def fwd_sum(conv, X):
     return np.sum(conv.forward(X, use_im2col=False))
 
-# Analytical gradient
 out_gc = conv_gc.forward(X_small, use_im2col=False)
 d_out_gc = np.ones_like(out_gc)
 conv_gc.backward(d_out_gc)
 analytic_grad = conv_gc.d_filters.copy()
 
-# Numerical gradient
 num_grad = np.zeros_like(conv_gc.filters)
 for idx in np.ndindex(conv_gc.filters.shape):
     conv_gc.filters[idx] += eps
@@ -128,7 +113,6 @@ print(f"Max relative error: {rel_error:.2e}  (should be < 1e-4)")
 assert rel_error < 1e-4, f"Gradient check failed: {rel_error}"
 print("Gradient check   : PASSED")
 
-# ── 7. Optional visualisation ─────────────────────────────────────────────────
 try:
     import matplotlib
     matplotlib.use('Agg')
@@ -139,9 +123,7 @@ try:
     print("7. Visualising filters & feature maps")
     print("=" * 60)
 
-    # Use the 4-filter conv on a single grayscale image
     conv_vis = Conv2D(in_channels=1, out_channels=4, filter_size=3, stride=1, padding=1)
-    # Make a simple "image" with a diagonal stripe
     img = np.zeros((1, 16, 16, 1))
     for i in range(16):
         img[0, i, i, 0] = 1.0
@@ -154,13 +136,11 @@ try:
     fig.suptitle("Day 15 – Conv2D: Filters (top) & Feature Maps (bottom)", fontsize=13)
 
     for k in range(4):
-        # Filter (single-channel, so just squeeze)
         filt = conv_vis.filters[:, :, 0, k]
         axes[0, k].imshow(filt, cmap='RdBu_r', vmin=-filt.max(), vmax=filt.max())
         axes[0, k].set_title(f"Filter {k}")
         axes[0, k].axis('off')
 
-        # Feature map
         fm = feature_maps[0, :, :, k]
         axes[1, k].imshow(fm, cmap='viridis')
         axes[1, k].set_title(f"Feature Map {k}")
@@ -174,7 +154,6 @@ try:
 except ImportError:
     print("matplotlib not available – skipping visualisation.")
 
-# ── Summary ───────────────────────────────────────────────────────────────────
 print()
 print("=" * 60)
 print("All checks passed!  Conv2D layer is working correctly.")

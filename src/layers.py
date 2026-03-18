@@ -38,6 +38,7 @@ class Layer:
             self.v_biases = params['v_biases']
         if 't' in params:
             self.t = params['t']
+
     def __init__(self, n_inputs, n_neurons, activation='relu', dropout_rate=0.0, init_method='auto'):
         self.activation = activation
         self.dropout_rate = dropout_rate
@@ -76,23 +77,22 @@ class Layer:
         self.db = None
         self.v_weights = np.zeros_like(self.weights)
         self.v_biases = np.zeros_like(self.biases)
-        # Adam optimizer state
         self.m_weights = np.zeros_like(self.weights)
         self.vw_weights = np.zeros_like(self.weights)
         self.m_biases = np.zeros_like(self.biases)
         self.vw_biases = np.zeros_like(self.biases)
-        self.t = 0  # timestep for Adam
+        self.t = 0
         self.dropout_mask = None
 
     def forward(self, inputs):
         self.inputs = inputs
         self.z = np.dot(inputs, self.weights) + self.biases
         self.a = self._activate(self.z)
-        
+
         if self.training and self.dropout_rate > 0:
             self.dropout_mask = np.random.binomial(1, 1 - self.dropout_rate, size=self.a.shape)
             return self.a * self.dropout_mask / (1 - self.dropout_rate)
-        
+
         return self.a
 
     def _activate(self, z):
@@ -105,7 +105,6 @@ class Layer:
         return z
 
     def backward(self, dA, divisor=None):
-        print(f"[DEBUG] dA shape: {dA.shape}")
         if self.training and self.dropout_rate > 0:
             dA *= self.dropout_mask / (1 - self.dropout_rate)
 
@@ -118,28 +117,16 @@ class Layer:
         else:
             dZ = dA
 
-        print(f"[DEBUG] dZ shape: {dZ.shape}")
-        print(f"[DEBUG] self.inputs shape: {self.inputs.shape}")
         if divisor is None:
             divisor = 1
         self.dW = np.dot(self.inputs.T, dZ) / divisor
         self.db = np.sum(dZ, axis=0, keepdims=True) / divisor
-        print(f"[DEBUG] self.dW shape: {self.dW.shape}, self.db shape: {self.db.shape}")
 
         dA_prev = np.dot(dZ, self.weights.T)
-        print(f"[DEBUG] dA_prev shape: {dA_prev.shape}")
         return dA_prev
 
 
 class Conv2D:
-    """
-    2D Convolutional layer.
-
-    Input shape:  (batch_size, height, width, in_channels)
-    Filter shape: (filter_size, filter_size, in_channels, out_channels)
-    Output shape: (batch_size, out_h, out_w, out_channels)
-    """
-
     def __init__(self, in_channels, out_channels, filter_size=3, stride=1, padding=0):
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -147,23 +134,16 @@ class Conv2D:
         self.stride = stride
         self.padding = padding
 
-        # He-style scale for filters (ReLU-friendly default)
         fan_in = filter_size * filter_size * in_channels
         self.filters = np.random.randn(filter_size, filter_size, in_channels, out_channels) * np.sqrt(2.0 / fan_in)
         self.biases = np.zeros((1, 1, 1, out_channels))
 
         self.d_filters = None
         self.d_biases = None
-        self._X_pad = None  # cached for backward pass
+        self._X_pad = None
+        self._col   = None
 
-    # ------------------------------------------------------------------
-    # Forward pass – naive O(n^4) loop version (clear, educational)
-    # ------------------------------------------------------------------
     def forward(self, X, use_im2col=True):
-        """
-        X: (batch_size, H, W, in_channels)
-        Returns output: (batch_size, out_h, out_w, out_channels)
-        """
         self._X_orig = X
         batch_size, h, w, in_c = X.shape
         f, stride, pad = self.filter_size, self.stride, self.padding
@@ -183,7 +163,6 @@ class Conv2D:
             return self._forward_naive(X_pad, batch_size, out_h, out_w)
 
     def _forward_naive(self, X_pad, batch_size, out_h, out_w):
-        """Readable nested-loop implementation."""
         f, stride = self.filter_size, self.stride
         out = np.zeros((batch_size, out_h, out_w, self.out_channels))
 
@@ -192,78 +171,79 @@ class Conv2D:
                 for j in range(out_w):
                     h_start = i * stride
                     w_start = j * stride
-                    patch = X_pad[b, h_start:h_start + f, w_start:w_start + f, :]  # (f,f,in_c)
-                    # Each output channel k: sum(patch * filters[:,:,:,k]) + bias_k
+                    patch = X_pad[b, h_start:h_start + f, w_start:w_start + f, :]
                     for k in range(self.out_channels):
                         out[b, i, j, k] = np.sum(patch * self.filters[:, :, :, k]) + self.biases[0, 0, 0, k]
         return out
 
     def _forward_im2col(self, X_pad, batch_size, out_h, out_w):
-        """
-        Vectorised via im2col: turns convolution into one matrix multiply.
-
-        col matrix shape: (batch_size * out_h * out_w,  f*f*in_c)
-        filters_col shape: (f*f*in_c,  out_channels)
-        """
         f, stride = self.filter_size, self.stride
 
-        # Build col matrix by extracting all patches at once
         col = np.zeros((batch_size, out_h, out_w, f, f, self.in_channels))
         for i in range(out_h):
             for j in range(out_w):
                 h_s, w_s = i * stride, j * stride
                 col[:, i, j, :, :, :] = X_pad[:, h_s:h_s + f, w_s:w_s + f, :]
 
-        # Flatten patch dims: (N, out_h, out_w, f*f*in_c)
         col = col.reshape(batch_size, out_h, out_w, -1)
-        # Filters: (f*f*in_c, out_channels)
+        self._col = col
         filters_col = self.filters.reshape(-1, self.out_channels)
+        out = col @ filters_col + self.biases
+        return out
 
-        # Matrix multiply: (..., f*f*in_c) @ (f*f*in_c, out_c) → (..., out_c)
-        out = col @ filters_col + self.biases   # broadcasting over batch/spatial dims
-        return out  # (batch_size, out_h, out_w, out_channels)
-
-    # ------------------------------------------------------------------
-    # Backward pass
-    # ------------------------------------------------------------------
-    def backward(self, d_out):
-        """
-        d_out: (batch_size, out_h, out_w, out_channels)
-        Returns d_X: (batch_size, H, W, in_channels)
-        """
+    def _backward_naive(self, d_out):
         X_pad = self._X_pad
         batch_size, out_h, out_w, _ = d_out.shape
         f, stride, pad = self.filter_size, self.stride, self.padding
 
         self.d_filters = np.zeros_like(self.filters)
-        self.d_biases = np.sum(d_out, axis=(0, 1, 2), keepdims=True)  # (1,1,1,out_c)
-
+        self.d_biases = np.sum(d_out, axis=(0, 1, 2), keepdims=True)
         d_X_pad = np.zeros_like(X_pad)
 
         for b in range(batch_size):
             for i in range(out_h):
                 for j in range(out_w):
                     h_s, w_s = i * stride, j * stride
-                    patch = X_pad[b, h_s:h_s + f, w_s:w_s + f, :]  # (f,f,in_c)
-
-                    # d_filters: sum over all positions and batch items
-                    # d_out[b,i,j,:] shape: (out_c,)
-                    # patch shape: (f,f,in_c) → need (f,f,in_c,1) * (1,1,1,out_c)
+                    patch = X_pad[b, h_s:h_s + f, w_s:w_s + f, :]
                     self.d_filters += patch[:, :, :, np.newaxis] * d_out[b, i, j, np.newaxis, np.newaxis, np.newaxis, :]
-
-                    # d_X_pad: distribute gradient back through the patch
-                    # filters: (f,f,in_c,out_c), d_out[b,i,j]: (out_c,)
-                    d_X_pad[b, h_s:h_s + f, w_s:w_s + f, :] += np.sum(
-                        self.filters * d_out[b, i, j, np.newaxis, np.newaxis, np.newaxis, :],
-                        axis=3
+                    d_X_pad[b, h_s:h_s + f, w_s:w_s + f, :] += np.tensordot(
+                        self.filters, d_out[b, i, j, :], axes=([3], [0])
                     )
 
-        # Strip padding to get gradient w.r.t. original input
         if pad > 0:
-            d_X = d_X_pad[:, pad:-pad, pad:-pad, :]
-        else:
-            d_X = d_X_pad
-        return d_X
+            return d_X_pad[:, pad:-pad, pad:-pad, :]
+        return d_X_pad
+
+    def _backward_im2col(self, d_out):
+        batch_size, out_h, out_w, out_c = d_out.shape
+        f, stride, pad = self.filter_size, self.stride, self.padding
+
+        self.d_biases = np.sum(d_out, axis=(0, 1, 2), keepdims=True)
+
+        d_out_flat  = d_out.reshape(-1, out_c)
+        col_flat    = self._col.reshape(-1, f * f * self.in_channels)
+        filters_col = self.filters.reshape(-1, out_c)
+
+        self.d_filters = (col_flat.T @ d_out_flat).reshape(self.filters.shape)
+
+        d_col = (d_out_flat @ filters_col.T).reshape(
+            batch_size, out_h, out_w, f, f, self.in_channels
+        )
+
+        d_X_pad = np.zeros_like(self._X_pad)
+        for i in range(out_h):
+            for j in range(out_w):
+                h_s, w_s = i * stride, j * stride
+                d_X_pad[:, h_s:h_s + f, w_s:w_s + f, :] += d_col[:, i, j, :, :, :]
+
+        if pad > 0:
+            return d_X_pad[:, pad:-pad, pad:-pad, :]
+        return d_X_pad
+
+    def backward(self, d_out, use_im2col=True):
+        if use_im2col and self._col is not None:
+            return self._backward_im2col(d_out)
+        return self._backward_naive(d_out)
 
 
 class BatchNorm:
@@ -288,24 +268,25 @@ class BatchNorm:
         self.beta = params['beta']
         self.running_mean = params['running_mean']
         self.running_var = params['running_var']
+
     def __init__(self, n_features, eps=1e-8, momentum=0.9):
         self.gamma = np.ones((1, n_features))
         self.beta = np.zeros((1, n_features))
         self.eps = eps
         self.momentum = momentum
-        
+
         self.running_mean = np.zeros((1, n_features))
         self.running_var = np.ones((1, n_features))
-        
+
         self.training = True
-        
+
         self.x_norm = None
         self.x_centered = None
         self.std = None
         self.var = None
         self.mean = None
         self.batch_size = None
-        
+
         self.dgamma = None
         self.dbeta = None
         self.v_gamma = np.zeros_like(self.gamma)
@@ -316,14 +297,14 @@ class BatchNorm:
             self.batch_size = Z.shape[0]
             self.mean = np.mean(Z, axis=0, keepdims=True)
             self.var = np.var(Z, axis=0, keepdims=True)
-            
+
             self.x_centered = Z - self.mean
             self.std = np.sqrt(self.var + self.eps)
             self.x_norm = self.x_centered / self.std
-            
+
             self.running_mean = self.momentum * self.running_mean + (1 - self.momentum) * self.mean
             self.running_var = self.momentum * self.running_var + (1 - self.momentum) * self.var
-            
+
             out = self.gamma * self.x_norm + self.beta
         else:
             x_norm = (Z - self.running_mean) / np.sqrt(self.running_var + self.eps)
@@ -334,15 +315,15 @@ class BatchNorm:
         if self.training:
             self.dgamma = np.sum(dout * self.x_norm, axis=0, keepdims=True)
             self.dbeta = np.sum(dout, axis=0, keepdims=True)
-            
+
             dx_norm = dout * self.gamma
-            
+
             dvar = np.sum(dx_norm * self.x_centered * -0.5 * self.std ** (-3), axis=0, keepdims=True)
             dmean = np.sum(dx_norm * -1 / self.std, axis=0, keepdims=True) + dvar * np.mean(-2 * self.x_centered, axis=0, keepdims=True)
-            
+
             dZ = (dx_norm / self.std) + (dvar * 2 * self.x_centered / self.batch_size) + (dmean / self.batch_size)
-            
+
         else:
             dZ = dout * self.gamma / np.sqrt(self.running_var + self.eps)
-            
+
         return dZ
