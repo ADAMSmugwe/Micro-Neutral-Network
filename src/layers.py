@@ -120,10 +120,8 @@ class Layer:
 
         print(f"[DEBUG] dZ shape: {dZ.shape}")
         print(f"[DEBUG] self.inputs shape: {self.inputs.shape}")
-        m = dA.shape[0]
-        n = dA.shape[1]
         if divisor is None:
-            divisor = m * n
+            divisor = 1
         self.dW = np.dot(self.inputs.T, dZ) / divisor
         self.db = np.sum(dZ, axis=0, keepdims=True) / divisor
         print(f"[DEBUG] self.dW shape: {self.dW.shape}, self.db shape: {self.db.shape}")
