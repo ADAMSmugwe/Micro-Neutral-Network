@@ -133,6 +133,141 @@ class Layer:
         return dA_prev
 
 
+class Conv2D:
+    """
+    2D Convolutional layer.
+
+    Input shape:  (batch_size, height, width, in_channels)
+    Filter shape: (filter_size, filter_size, in_channels, out_channels)
+    Output shape: (batch_size, out_h, out_w, out_channels)
+    """
+
+    def __init__(self, in_channels, out_channels, filter_size=3, stride=1, padding=0):
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.filter_size = filter_size
+        self.stride = stride
+        self.padding = padding
+
+        # He-style scale for filters (ReLU-friendly default)
+        fan_in = filter_size * filter_size * in_channels
+        self.filters = np.random.randn(filter_size, filter_size, in_channels, out_channels) * np.sqrt(2.0 / fan_in)
+        self.biases = np.zeros((1, 1, 1, out_channels))
+
+        self.d_filters = None
+        self.d_biases = None
+        self._X_pad = None  # cached for backward pass
+
+    # ------------------------------------------------------------------
+    # Forward pass – naive O(n^4) loop version (clear, educational)
+    # ------------------------------------------------------------------
+    def forward(self, X, use_im2col=True):
+        """
+        X: (batch_size, H, W, in_channels)
+        Returns output: (batch_size, out_h, out_w, out_channels)
+        """
+        self._X_orig = X
+        batch_size, h, w, in_c = X.shape
+        f, stride, pad = self.filter_size, self.stride, self.padding
+
+        if pad > 0:
+            X_pad = np.pad(X, ((0, 0), (pad, pad), (pad, pad), (0, 0)), mode='constant')
+        else:
+            X_pad = X
+        self._X_pad = X_pad
+
+        out_h = (h + 2 * pad - f) // stride + 1
+        out_w = (w + 2 * pad - f) // stride + 1
+
+        if use_im2col:
+            return self._forward_im2col(X_pad, batch_size, out_h, out_w)
+        else:
+            return self._forward_naive(X_pad, batch_size, out_h, out_w)
+
+    def _forward_naive(self, X_pad, batch_size, out_h, out_w):
+        """Readable nested-loop implementation."""
+        f, stride = self.filter_size, self.stride
+        out = np.zeros((batch_size, out_h, out_w, self.out_channels))
+
+        for b in range(batch_size):
+            for i in range(out_h):
+                for j in range(out_w):
+                    h_start = i * stride
+                    w_start = j * stride
+                    patch = X_pad[b, h_start:h_start + f, w_start:w_start + f, :]  # (f,f,in_c)
+                    # Each output channel k: sum(patch * filters[:,:,:,k]) + bias_k
+                    for k in range(self.out_channels):
+                        out[b, i, j, k] = np.sum(patch * self.filters[:, :, :, k]) + self.biases[0, 0, 0, k]
+        return out
+
+    def _forward_im2col(self, X_pad, batch_size, out_h, out_w):
+        """
+        Vectorised via im2col: turns convolution into one matrix multiply.
+
+        col matrix shape: (batch_size * out_h * out_w,  f*f*in_c)
+        filters_col shape: (f*f*in_c,  out_channels)
+        """
+        f, stride = self.filter_size, self.stride
+
+        # Build col matrix by extracting all patches at once
+        col = np.zeros((batch_size, out_h, out_w, f, f, self.in_channels))
+        for i in range(out_h):
+            for j in range(out_w):
+                h_s, w_s = i * stride, j * stride
+                col[:, i, j, :, :, :] = X_pad[:, h_s:h_s + f, w_s:w_s + f, :]
+
+        # Flatten patch dims: (N, out_h, out_w, f*f*in_c)
+        col = col.reshape(batch_size, out_h, out_w, -1)
+        # Filters: (f*f*in_c, out_channels)
+        filters_col = self.filters.reshape(-1, self.out_channels)
+
+        # Matrix multiply: (..., f*f*in_c) @ (f*f*in_c, out_c) → (..., out_c)
+        out = col @ filters_col + self.biases   # broadcasting over batch/spatial dims
+        return out  # (batch_size, out_h, out_w, out_channels)
+
+    # ------------------------------------------------------------------
+    # Backward pass
+    # ------------------------------------------------------------------
+    def backward(self, d_out):
+        """
+        d_out: (batch_size, out_h, out_w, out_channels)
+        Returns d_X: (batch_size, H, W, in_channels)
+        """
+        X_pad = self._X_pad
+        batch_size, out_h, out_w, _ = d_out.shape
+        f, stride, pad = self.filter_size, self.stride, self.padding
+
+        self.d_filters = np.zeros_like(self.filters)
+        self.d_biases = np.sum(d_out, axis=(0, 1, 2), keepdims=True)  # (1,1,1,out_c)
+
+        d_X_pad = np.zeros_like(X_pad)
+
+        for b in range(batch_size):
+            for i in range(out_h):
+                for j in range(out_w):
+                    h_s, w_s = i * stride, j * stride
+                    patch = X_pad[b, h_s:h_s + f, w_s:w_s + f, :]  # (f,f,in_c)
+
+                    # d_filters: sum over all positions and batch items
+                    # d_out[b,i,j,:] shape: (out_c,)
+                    # patch shape: (f,f,in_c) → need (f,f,in_c,1) * (1,1,1,out_c)
+                    self.d_filters += patch[:, :, :, np.newaxis] * d_out[b, i, j, np.newaxis, np.newaxis, np.newaxis, :]
+
+                    # d_X_pad: distribute gradient back through the patch
+                    # filters: (f,f,in_c,out_c), d_out[b,i,j]: (out_c,)
+                    d_X_pad[b, h_s:h_s + f, w_s:w_s + f, :] += np.sum(
+                        self.filters * d_out[b, i, j, np.newaxis, np.newaxis, np.newaxis, :],
+                        axis=3
+                    )
+
+        # Strip padding to get gradient w.r.t. original input
+        if pad > 0:
+            d_X = d_X_pad[:, pad:-pad, pad:-pad, :]
+        else:
+            d_X = d_X_pad
+        return d_X
+
+
 class BatchNorm:
     def get_config(self):
         return {
