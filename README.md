@@ -1,122 +1,98 @@
-<<<<<<< HEAD
-# Micro-neural-network
-A simple neural network library built from scratch.
-=======
-<<<<<<< HEAD
-# Daily Commit Automation
+# Micro Neural Network
 
-This project automates daily GitHub commits to keep your contribution graph "Dark Green".
-## Setup Guide
+A neural network library built from scratch using only NumPy — no PyTorch, no TensorFlow.
 
-### 1. Clone the Repo
-```
-git clone https://github.com/ADAMSmugwe/daily-commit.git
-cd daily-commit
-### 2. Initialize Local Git (if not already initialized)
-```
-git remote add origin https://github.com/ADAMSmugwe/daily-commit.git
-
-- Use `git config --global credential.helper cache` to cache credentials.
-- For HTTPS, use a Personal Access Token (PAT) as your password.
-To test locally without pushing:
-```
-python mass_commit.py --dry-run
-- The workflow `.github/workflows/daily_green.yml` triggers the script daily and allows manual runs.
-- All commits modify `activity_log.txt`.
-```
-
-git push -u origin main
-```
-
-
-### 5. Dry Run Mode
-
-# Daily Commit Automation
-
-
-### 1. Clone the Repo
-
-```
-
-cd daily-commit
-```
-
-### 2. Initialize Local Git (if not already initialized)
-
-```
-```
-
-### 3. Link to Remote GitHub Repo
-git branch -M main
-git push -u origin main
-### 4. Git Credentials
-
-- Use `git config --global credential.helper cache` to cache credentials.
-- For HTTPS, use a Personal Access Token (PAT) as your password.
-- For SSH, set up your SSH keys and add them to GitHub.
-
-### 5. Dry Run Mode
-
-To test locally without pushing:
-
-```
-python mass_commit.py --dry-run
-```
-
-### 6. Manual Run
-
-To run the script and push commits:
-
-```
-python mass_commit.py
-```
-
-### 7. GitHub Actions (Automatic Daily Push)
-
-- The workflow `.github/workflows/daily_green.yml` triggers the script daily and allows manual runs.
-- Ensure your repo has `activity_log.txt` and `mass_commit.py` in the root.
-- GitHub Actions will automatically push commits every day at 02:00 UTC.
-
-## Notes
-
-- The script generates 45–55 commits daily, each with a unique timestamp and random message.
-- All commits modify `activity_log.txt`.
-- Dry run mode prevents actual git push for safe testing.
-
-## Troubleshooting
-
-- If you see authentication errors, check your Git credentials.
-- If the workflow fails, check the Actions tab for logs.
-```
-
-### 6. Manual Run
-
-To run the script and push commits:
-
-```
-python mass_commit.py
-```
-
-### 7. GitHub Actions
-
-- The workflow `.github/workflows/daily_green.yml` triggers the script daily and allows manual runs.
-- Ensure your repo has `activity_log.txt` and `mass_commit.py` in the root.
+Every component is hand-implemented: forward passes, backpropagation, optimizers, convolutional layers, and evaluation metrics.
 
 ---
 
-## Notes
+## What's Built
 
-- The script generates 45–55 commits daily, each with a unique timestamp and random message.
-- All commits modify `activity_log.txt`.
-- Dry run mode prevents actual git push for safe testing.
+| Component | Details |
+|---|---|
+| **Layers** | Dense, Conv2D (im2col), MaxPool2D, Flatten, BatchNorm, ReLU, Dropout |
+| **Activations** | ReLU, Leaky ReLU, Sigmoid, Tanh, Softmax |
+| **Loss Functions** | MSE, Cross-Entropy |
+| **Optimizers** | SGD, Momentum, Adam |
+| **Regularization** | L2, Dropout, Gradient Clipping (value & norm) |
+| **LR Schedulers** | Step decay, Exponential, Time-based |
+| **Data Augmentation** | Rotation, Shift, Zoom, Horizontal Flip |
+| **Evaluation** | Confusion Matrix, Precision/Recall/F1, ROC/AUC, Filter Visualisation |
 
 ---
 
-## Troubleshooting
+## Results on MNIST
 
-- If you see authentication errors, check your Git credentials.
-- If the workflow fails, check the Actions tab for logs.
-=======
-# daily-commit
->>>>>>> origin/main
->>>>>>> dailycommit/main
+Trained on **5,000 samples** for **10 epochs** using a 2-layer CNN built entirely from scratch.
+
+- **Test Accuracy: 87.4%**
+- **Macro AUC: 0.99**
+
+### Confusion Matrix
+
+![Confusion Matrix](outputs/evaluation/confusion_matrix.png)
+
+The model performs strongly across all digits. The main confusion is between visually similar pairs — 7 vs 9 (20 errors) and 4 vs 9 (15 errors).
+
+### ROC Curves (One-vs-Rest)
+
+![ROC Curves](outputs/evaluation/roc_curves.png)
+
+All 10 classes achieve AUC ≥ 0.98, with digit 1 hitting a perfect 1.000.
+
+### Misclassified Examples
+
+![Misclassified Examples](outputs/evaluation/misclassified.png)
+
+Seeing the actual wrong predictions reveals why — most misclassified digits are genuinely ambiguous even to the human eye.
+
+### Learned Conv1 Filters
+
+![Conv1 Filters](outputs/evaluation/conv1_filters.png)
+
+The first convolutional layer learns edge detectors and gradient patterns spontaneously — no supervision, just backpropagation.
+
+---
+
+## Project Structure
+
+```
+src/
+├── layers.py        # Dense, Conv2D, MaxPool2D, Flatten, BatchNorm, ReLU
+├── network.py       # Network class — forward, backward, update, train
+├── loss.py          # MSE and Cross-Entropy
+├── augmentation.py  # DataAugmentor — rotation, shift, zoom, flip
+├── metrics.py       # Confusion matrix, F1, ROC/AUC, visualisation
+└── utils.py         # LR schedulers, data utilities
+
+examples/
+├── xor_example.py          # XOR problem — sanity check
+├── cnn_mnist_demo.py       # CNN training on MNIST
+├── augmentation_demo.py    # Baseline vs augmented training comparison
+├── evaluation_demo.py      # Full evaluation suite
+├── batchnorm_demo.py       # BatchNorm vs no BatchNorm
+├── clip_demo.py            # Gradient clipping comparison
+└── gradient_check.py       # Numerical gradient verification
+```
+
+---
+
+## Quick Start
+
+```bash
+pip install numpy scipy matplotlib
+python examples/cnn_mnist_demo.py
+```
+
+---
+
+## Architecture
+
+```
+Input (28×28×1)
+    → Conv2D(1→8, 3×3, pad=1) → ReLU → MaxPool(2×2)
+    → Conv2D(8→16, 3×3, pad=1) → ReLU → MaxPool(2×2)
+    → Flatten
+    → Dense(784→128, ReLU)
+    → Dense(128→10, Softmax)
+```
