@@ -155,10 +155,11 @@ class Network:
                 layer.gamma += layer.v_gamma
                 layer.beta += layer.v_beta
 
-    def train(self, X, y, epochs=1000, lr=0.01, momentum=0.0, batch_size=32, verbose=True, print_every=100, lr_scheduler=None, clip_type=None, clip_value=1.0):
+    def train(self, X, y, epochs=1000, lr=0.01, momentum=0.0, batch_size=32, verbose=True, print_every=100, lr_scheduler=None, clip_type=None, clip_value=1.0, augmentor=None, val_data=None):
         self.train_mode()
         n_samples = X.shape[0]
         history = []
+        val_history = []
 
         for epoch in range(epochs):
             if lr_scheduler is not None:
@@ -170,6 +171,9 @@ class Network:
             for i in range(0, n_samples, batch_size):
                 X_batch = X_shuffled[i:i+batch_size]
                 y_batch = y_shuffled[i:i+batch_size]
+
+                if augmentor is not None:
+                    X_batch, y_batch = augmentor.apply(X_batch, y_batch)
 
                 y_pred = self.forward(X_batch)
                 self.backward(y_batch, y_pred)
@@ -183,8 +187,24 @@ class Network:
             # Always record loss every epoch
             full_pred = self.forward(X)
             current_loss = self.loss(y, full_pred)
-            if verbose and epoch % print_every == 0:
-                print(f"Epoch {epoch}, Loss: {current_loss:.6f}, LR: {lr:.6f}")
             history.append(current_loss)
 
+            if val_data is not None:
+                self.eval_mode()
+                X_val, y_val = val_data
+                val_pred = self.forward(X_val)
+                val_loss = self.loss(y_val, val_pred)
+                val_history.append(val_loss)
+                self.train_mode()
+            else:
+                val_loss = None
+
+            if verbose and epoch % print_every == 0:
+                if val_loss is not None:
+                    print(f"Epoch {epoch}, Loss: {current_loss:.6f}, Val Loss: {val_loss:.6f}, LR: {lr:.6f}")
+                else:
+                    print(f"Epoch {epoch}, Loss: {current_loss:.6f}, LR: {lr:.6f}")
+
+        if val_data is not None:
+            return history, val_history
         return history
