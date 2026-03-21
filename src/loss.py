@@ -1,11 +1,9 @@
 import numpy as np
 
 def mse_loss(y_true, y_pred):
-    print(f"[DEBUG] mse_loss: y_true.size={y_true.size}")
     return np.mean((y_true - y_pred) ** 2)
 
 def mse_derivative(y_true, y_pred):
-    print(f"[DEBUG] mse_derivative: divisor={y_true.size}")
     return 2 * (y_pred - y_true) / y_true.size
 
 def cross_entropy_loss(y_true, y_pred):

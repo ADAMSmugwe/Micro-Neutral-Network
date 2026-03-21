@@ -114,7 +114,7 @@ class Network:
         
         if self.reg_lambda > 0:
             for layer in self.layers:
-                if hasattr(layer, 'weights'):
+                if hasattr(layer, 'weights') and layer.dW is not None:
                     layer.dW += self.reg_lambda * layer.weights
 
     def update(self, lr=0.01, momentum=0.0, optimizer='sgd', beta1=0.9, beta2=0.999, eps=1e-8):
@@ -155,7 +155,7 @@ class Network:
                 layer.gamma += layer.v_gamma
                 layer.beta += layer.v_beta
 
-    def train(self, X, y, epochs=1000, lr=0.01, momentum=0.0, batch_size=32, verbose=True, print_every=100, lr_scheduler=None, clip_type=None, clip_value=1.0, augmentor=None, val_data=None):
+    def train(self, X, y, epochs=1000, lr=0.01, momentum=0.0, optimizer='sgd', beta1=0.9, beta2=0.999, eps=1e-8, batch_size=32, verbose=True, print_every=100, lr_scheduler=None, clip_type=None, clip_value=1.0, augmentor=None, val_data=None):
         self.train_mode()
         n_samples = X.shape[0]
         history = []
@@ -182,7 +182,7 @@ class Network:
                     self.clip_gradients_value(clip_value)
                 elif clip_type == 'norm':
                     self.clip_gradients_norm(clip_value)
-                self.update(lr, momentum)
+                self.update(lr, momentum, optimizer=optimizer, beta1=beta1, beta2=beta2, eps=eps)
 
             # Always record loss every epoch
             full_pred = self.forward(X)
