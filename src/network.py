@@ -202,46 +202,31 @@ class Network:
         return history
 
     def accuracy(self, y_true, y_pred):
-        """Fraction of correct predictions.
-
-        y_true: integer class labels (N,) or one-hot (N, C)
-        y_pred: softmax probabilities  (N, C)
-        """
-        pred_classes = np.argmax(y_pred, axis=1)
-        if y_true.ndim > 1:
-            true_classes = np.argmax(y_true, axis=1)
-        else:
-            true_classes = y_true.astype(int)
-        return float(np.mean(pred_classes == true_classes))
+        preds = np.argmax(y_pred, axis=1)
+        labels = np.argmax(y_true, axis=1) if y_true.ndim > 1 else y_true.astype(int)
+        return float(np.mean(preds == labels))
 
     def train_with_history(self, X_train, y_train, X_val, y_val,
                             epochs=50, lr=0.01, lr_scheduler=None,
                             batch_size=32, patience=5,
                             optimizer='sgd', momentum=0.0,
                             verbose=True):
-        """Train and return per-epoch metrics dict with early stopping.
-
-        Returns
-        -------
-        dict with lists: 'train_loss', 'val_loss', 'val_acc'
-        """
         history = {'train_loss': [], 'val_loss': [], 'val_acc': []}
         best_val_loss = float('inf')
-        patience_counter = 0
-        n_samples = X_train.shape[0]
+        strikes = 0
+        n = X_train.shape[0]
 
         self.train_mode()
         for epoch in range(epochs):
             if lr_scheduler is not None:
                 lr = lr_scheduler.get_lr(epoch)
 
-            indices = np.random.permutation(n_samples)
-            X_s, y_s = X_train[indices], y_train[indices]
+            idx = np.random.permutation(n)
+            X_s, y_s = X_train[idx], y_train[idx]
 
             batch_losses = []
-            for i in range(0, n_samples, batch_size):
-                Xb = X_s[i:i + batch_size]
-                yb = y_s[i:i + batch_size]
+            for i in range(0, n, batch_size):
+                Xb, yb = X_s[i:i+batch_size], y_s[i:i+batch_size]
                 pred = self.forward(Xb)
                 batch_losses.append(float(self.loss(yb, pred)))
                 self.backward(yb, pred)
@@ -252,7 +237,7 @@ class Network:
             self.eval_mode()
             val_pred = self.forward(X_val)
             val_loss = float(self.loss(y_val, val_pred))
-            val_acc  = self.accuracy(y_val, val_pred)
+            val_acc = self.accuracy(y_val, val_pred)
             self.train_mode()
 
             history['train_loss'].append(train_loss)
@@ -260,17 +245,16 @@ class Network:
             history['val_acc'].append(val_acc)
 
             if verbose:
-                print(f"Epoch {epoch+1:3d}: train_loss={train_loss:.4f}  "
-                      f"val_loss={val_loss:.4f}  val_acc={val_acc:.4f}  lr={lr:.6f}")
+                print(f"Epoch {epoch+1} | loss: {train_loss:.4f}  val_loss: {val_loss:.4f}  val_acc: {val_acc:.4f}")
 
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
-                patience_counter = 0
+                strikes = 0
             else:
-                patience_counter += 1
-                if patience_counter >= patience:
+                strikes += 1
+                if strikes >= patience:
                     if verbose:
-                        print(f"  Early stopping at epoch {epoch+1}")
+                        print(f"early stopping at epoch {epoch+1}")
                     break
 
         return history

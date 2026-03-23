@@ -1,10 +1,6 @@
 """
-Day 20 – Hyperparameter Tuning
-================================
-Systematic search (grid + random) over key CNN hyperparameters on a
-small MNIST subset so the search finishes in a reasonable time.
-
-Results are saved to outputs/tuning/.
+hyperparameter tuning - grid search + random search on MNIST
+results saved to outputs/tuning/
 """
 
 import sys
@@ -70,7 +66,6 @@ def one_hot(y, n=10):
     return out
 
 def build_network(hidden_size=128, dropout=0.0, reg_lambda=0.0):
-    """CNN: Conv(1→8)→ReLU→Pool → Conv(8→16)→ReLU→Pool → Dense→Softmax."""
     net = Network(reg_lambda=reg_lambda)
     net.add_layer(Conv2D(in_channels=1,  out_channels=8,  filter_size=3, stride=1, padding=1))
     net.add_layer(ReLU())
@@ -86,7 +81,6 @@ def build_network(hidden_size=128, dropout=0.0, reg_lambda=0.0):
 
 def grid_search(X_train, y_train, X_val, y_val, param_grid,
                 epochs=20, patience=4, verbose=False):
-    """Try every combination in param_grid and return sorted results list."""
     keys   = list(param_grid.keys())
     values = list(param_grid.values())
     combos = list(itertools.product(*values))
@@ -138,7 +132,6 @@ def grid_search(X_train, y_train, X_val, y_val, param_grid,
 
 def random_search(n_trials, X_train, y_train, X_val, y_val,
                   epochs=20, patience=4, seed=None, verbose=False):
-    """Sample hyperparameters randomly and return sorted results list."""
     if seed is not None:
         np.random.seed(seed)
 
@@ -195,11 +188,6 @@ def random_search(n_trials, X_train, y_train, X_val, y_val,
 
 def find_lr(net, X, y, batch_size=64, start_lr=1e-6, end_lr=1.0,
             num_steps=100, beta=0.98):
-    """Geometrically increase LR over num_steps mini-batches; track loss.
-
-    Returns (lrs, smoothed_losses) — plot and pick the LR where loss
-    falls fastest (steepest downward slope).
-    """
     n    = len(X)
     mult = (end_lr / start_lr) ** (1.0 / max(num_steps - 1, 1))
     lr   = start_lr
@@ -259,7 +247,6 @@ def print_results_table(results, title='Results'):
         print(row)
 
 def plot_search_results(results, prefix='grid'):
-    """Bar chart of val_acc per trial + history curves of top-3 configs."""
     if not results:
         return
 
@@ -323,7 +310,6 @@ def plot_search_results(results, prefix='grid'):
 
 
 def plot_sensitivity(results, param_key, prefix='grid'):
-    """Scatter plot of one hyperparameter vs best val_acc."""
     vals = [r[param_key] for r in results]
     accs = [r['best_val_acc'] for r in results]
     if len(set(vals)) < 2:
