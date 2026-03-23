@@ -1,4 +1,3 @@
-# examples/xor_example.py
 import sys
 import os
 import numpy as np

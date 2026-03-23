@@ -10,7 +10,6 @@ def make_deep_mlp(input_dim=784, hidden_dim=256, depth=5, output_dim=10):
     layers.append(Layer(hidden_dim, output_dim, 'softmax'))
     return layers
 
-# Dummy MNIST-like data (replace with real MNIST for real use)
 X = np.random.randn(512, 784)
 y = np.eye(10)[np.random.choice(10, 512)]
 

@@ -35,7 +35,6 @@ OUT_DIR = os.path.join(os.path.dirname(__file__), '..', 'outputs', 'evaluation')
 os.makedirs(OUT_DIR, exist_ok=True)
 
 
-# ── MNIST loader ──────────────────────────────────────────────────────────────
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), '..', 'data', 'mnist')
 BASE_URL   = 'https://storage.googleapis.com/cvdf-datasets/mnist/'
@@ -83,7 +82,6 @@ def one_hot(y, n=10):
     return out
 
 
-# ── Model ─────────────────────────────────────────────────────────────────────
 
 def build_cnn():
     net = Network()
@@ -107,7 +105,6 @@ def batch_predict(net, X, batch_size=256):
     return np.concatenate(preds, axis=0)
 
 
-# ── Training ──────────────────────────────────────────────────────────────────
 
 print('Loading MNIST...')
 X_tr_full, y_tr_full, X_te_full, y_te_full = load_mnist()
@@ -147,22 +144,19 @@ for epoch in range(EPOCHS):
 net.eval_mode()
 
 
-# ── Evaluation ────────────────────────────────────────────────────────────────
 
 print('\n=== Evaluation ===')
-test_probs = batch_predict(net, X_test)           # (N, 10) softmax probabilities
-y_pred     = np.argmax(test_probs, axis=1)        # integer predictions
+test_probs = batch_predict(net, X_test)
+y_pred     = np.argmax(test_probs, axis=1)
 
 overall_acc = np.mean(y_pred == y_test)
 print(f'\nOverall accuracy: {overall_acc:.4f}  ({int(overall_acc * N_TEST)}/{N_TEST} correct)')
 
-# 1. Per-class report
 CLASSES = [str(i) for i in range(10)]
 print('\n--- Per-class metrics ---')
 report = classification_report(y_test, y_pred, classes=CLASSES)
 print_classification_report(report)
 
-# 2. Confusion matrix
 print('\n--- Confusion matrix ---')
 cm = confusion_matrix(y_test, y_pred)
 print(cm)
@@ -175,7 +169,6 @@ for fi in flat_idx:
     t, p = divmod(fi, 10)
     print(f'  {t} → {p}: {cm_offdiag[t, p]}')
 
-# 3. Plots (all saved to outputs/evaluation/)
 try:
     plot_confusion_matrix(
         y_test, y_pred, classes=CLASSES,
@@ -187,14 +180,12 @@ try:
         save_path=os.path.join(OUT_DIR, 'misclassified.png')
     )
 
-    # First Conv2D layer is layers[0]
     conv1 = net.layers[0]
     plot_filters(
         conv1,
         save_path=os.path.join(OUT_DIR, 'conv1_filters.png')
     )
 
-    # One-vs-rest ROC curves
     roc_results = multiclass_roc(y_test, test_probs, n_classes=10)
     print('\n--- Per-class AUC (one-vs-rest) ---')
     for c in range(10):

@@ -21,7 +21,6 @@ from src.network import Network
 from src.augmentation import DataAugmentor
 
 
-# ── MNIST loader (same as cnn_mnist_demo) ────────────────────────────────────
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), '..', 'data', 'mnist')
 BASE_URL   = 'https://storage.googleapis.com/cvdf-datasets/mnist/'
@@ -129,7 +128,6 @@ def run_training(net, X_train, Y_train, X_val, Y_val, epochs, batch_size, lr, au
     return train_losses, val_losses
 
 
-# ── Main ─────────────────────────────────────────────────────────────────────
 
 print('Loading MNIST...')
 X_train_full, y_train_full, X_test_full, y_test_full = load_mnist()
@@ -152,7 +150,6 @@ EPOCHS     = 10
 BATCH_SIZE = 128
 LR         = 0.01
 
-# Fix the same random seed so both nets start from the same weights
 np.random.seed(0)
 net_baseline  = build_cnn()
 np.random.seed(0)
@@ -172,14 +169,12 @@ augmented_train, augmented_val = run_training(
     augmentor=augmentor, label='Augmented'
 )
 
-# ── Summary ───────────────────────────────────────────────────────────────────
 print('\n=== Final Results ===')
 print(f'  Baseline  — train loss: {baseline_train[-1]:.4f}  val loss: {baseline_val[-1]:.4f}'
       f'  val acc: {accuracy(net_baseline,  X_val, y_val):.3f}')
 print(f'  Augmented — train loss: {augmented_train[-1]:.4f}  val loss: {augmented_val[-1]:.4f}'
       f'  val acc: {accuracy(net_augmented, X_val, y_val):.3f}')
 
-# ── Optional: plot loss curves ────────────────────────────────────────────────
 try:
     import matplotlib.pyplot as plt
 
@@ -206,7 +201,6 @@ try:
 except ImportError:
     print('\n(matplotlib not available — skipping plot)')
 
-# ── Optional: visualise augmented samples ─────────────────────────────────────
 try:
     import matplotlib.pyplot as plt
 

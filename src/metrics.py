@@ -1,7 +1,6 @@
 import numpy as np
 
 
-# ── Core metrics ──────────────────────────────────────────────────────────────
 
 def confusion_matrix(y_true, y_pred):
     """Build an (n_classes × n_classes) confusion matrix from integer or one-hot labels."""
@@ -49,7 +48,6 @@ def classification_report(y_true, y_pred, classes=None):
             'support':   support,
         }
 
-    # Macro and weighted averages
     keys  = list(report.keys())
     total = sum(report[k]['support'] for k in keys)
     macro_p  = np.mean([report[k]['precision'] for k in keys])
@@ -86,7 +84,6 @@ def print_classification_report(report):
                   f"{vals['recall']:>8.4f}  {vals['f1']:>8.4f}  {vals['support']:>8d}")
 
 
-# ── ROC / AUC ─────────────────────────────────────────────────────────────────
 
 def roc_curve(y_true, y_scores, n_thresholds=100):
     """
@@ -137,7 +134,6 @@ def multiclass_roc(y_true_int, y_scores, n_classes):
     return results
 
 
-# ── Visualisation helpers ─────────────────────────────────────────────────────
 
 def plot_confusion_matrix(y_true, y_pred, classes, save_path=None):
     """Plot a labelled confusion-matrix heatmap."""
@@ -218,20 +214,19 @@ def plot_filters(conv_layer, save_path=None):
     """
     import matplotlib.pyplot as plt
 
-    filters = conv_layer.filters          # (f, f, in_c, out_c)
+    filters = conv_layer.filters
     n_filters = filters.shape[3]
     ncols = min(n_filters, 8)
     nrows = (n_filters + ncols - 1) // ncols
 
     fig, axes = plt.subplots(nrows, ncols, figsize=(2 * ncols, 2 * nrows))
-    axes = np.array(axes).reshape(nrows, ncols)  # ensure 2-D
+    axes = np.array(axes).reshape(nrows, ncols)
 
     for idx in range(nrows * ncols):
         r, c = divmod(idx, ncols)
         ax = axes[r, c]
         if idx < n_filters:
             f = filters[:, :, 0, idx]
-            # Normalise to [0, 1] for display
             f_min, f_max = f.min(), f.max()
             if f_max > f_min:
                 f = (f - f_min) / (f_max - f_min)

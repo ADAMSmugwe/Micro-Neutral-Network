@@ -1,4 +1,3 @@
-# src/network.py
 import numpy as np
 from .loss import mse_loss, mse_derivative, cross_entropy_loss, cross_entropy_derivative
 
@@ -121,16 +120,13 @@ class Network:
         for layer in self.layers:
             if hasattr(layer, 'weights'):
                 if optimizer == 'adam':
-                    # Adam optimizer
                     layer.t += 1
-                    # Weights
                     g = layer.dW
                     layer.m_weights = beta1 * layer.m_weights + (1 - beta1) * g
                     layer.vw_weights = beta2 * layer.vw_weights + (1 - beta2) * (g ** 2)
                     m_hat = layer.m_weights / (1 - beta1 ** layer.t)
                     v_hat = layer.vw_weights / (1 - beta2 ** layer.t)
                     layer.weights -= lr * m_hat / (np.sqrt(v_hat) + eps)
-                    # Biases
                     g_b = layer.db
                     layer.m_biases = beta1 * layer.m_biases + (1 - beta1) * g_b
                     layer.vw_biases = beta2 * layer.vw_biases + (1 - beta2) * (g_b ** 2)
@@ -138,7 +134,6 @@ class Network:
                     v_hat_b = layer.vw_biases / (1 - beta2 ** layer.t)
                     layer.biases -= lr * m_hat_b / (np.sqrt(v_hat_b) + eps)
                 else:
-                    # SGD or Momentum
                     layer.v_weights = momentum * layer.v_weights - lr * layer.dW
                     layer.v_biases = momentum * layer.v_biases - lr * layer.db
                     layer.weights += layer.v_weights
@@ -149,7 +144,6 @@ class Network:
                 layer.filters  += layer.v_filters
                 layer.biases   += layer.v_biases
             if hasattr(layer, 'gamma'):
-                # BatchNorm params (still use momentum/SGD)
                 layer.v_gamma = momentum * layer.v_gamma - lr * layer.dgamma
                 layer.v_beta = momentum * layer.v_beta - lr * layer.dbeta
                 layer.gamma += layer.v_gamma
@@ -177,14 +171,12 @@ class Network:
 
                 y_pred = self.forward(X_batch)
                 self.backward(y_batch, y_pred)
-                # Gradient clipping
                 if clip_type == 'value':
                     self.clip_gradients_value(clip_value)
                 elif clip_type == 'norm':
                     self.clip_gradients_norm(clip_value)
                 self.update(lr, momentum, optimizer=optimizer, beta1=beta1, beta2=beta2, eps=eps)
 
-            # Always record loss every epoch
             full_pred = self.forward(X)
             current_loss = self.loss(y, full_pred)
             history.append(current_loss)
@@ -209,9 +201,6 @@ class Network:
             return history, val_history
         return history
 
-    # ------------------------------------------------------------------
-    # Accuracy helper
-    # ------------------------------------------------------------------
     def accuracy(self, y_true, y_pred):
         """Fraction of correct predictions.
 
@@ -225,9 +214,6 @@ class Network:
             true_classes = y_true.astype(int)
         return float(np.mean(pred_classes == true_classes))
 
-    # ------------------------------------------------------------------
-    # Training with structured history + early stopping
-    # ------------------------------------------------------------------
     def train_with_history(self, X_train, y_train, X_val, y_val,
                             epochs=50, lr=0.01, lr_scheduler=None,
                             batch_size=32, patience=5,
@@ -249,11 +235,9 @@ class Network:
             if lr_scheduler is not None:
                 lr = lr_scheduler.get_lr(epoch)
 
-            # Shuffle
             indices = np.random.permutation(n_samples)
             X_s, y_s = X_train[indices], y_train[indices]
 
-            # Mini-batch pass — accumulate loss to avoid a second full forward
             batch_losses = []
             for i in range(0, n_samples, batch_size):
                 Xb = X_s[i:i + batch_size]
@@ -265,7 +249,6 @@ class Network:
 
             train_loss = float(np.mean(batch_losses))
 
-            # Validation (disables dropout / uses running BN stats)
             self.eval_mode()
             val_pred = self.forward(X_val)
             val_loss = float(self.loss(y_val, val_pred))
@@ -280,7 +263,6 @@ class Network:
                 print(f"Epoch {epoch+1:3d}: train_loss={train_loss:.4f}  "
                       f"val_loss={val_loss:.4f}  val_acc={val_acc:.4f}  lr={lr:.6f}")
 
-            # Early stopping on validation loss
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 patience_counter = 0

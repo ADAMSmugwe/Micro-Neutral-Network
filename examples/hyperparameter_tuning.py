@@ -26,15 +26,9 @@ from src.layers import Conv2D, MaxPool2D, Flatten, ReLU, Layer
 from src.network import Network
 from src.utils import LearningRateScheduler
 
-# ---------------------------------------------------------------------------
-# Output directory
-# ---------------------------------------------------------------------------
 OUT_DIR = os.path.join(os.path.dirname(__file__), '..', 'outputs', 'tuning')
 os.makedirs(OUT_DIR, exist_ok=True)
 
-# ---------------------------------------------------------------------------
-# MNIST helpers (shared with other examples)
-# ---------------------------------------------------------------------------
 CACHE_DIR = os.path.join(os.path.dirname(__file__), '..', 'data', 'mnist')
 BASE_URL   = 'https://storage.googleapis.com/cvdf-datasets/mnist/'
 FILES = {
@@ -75,9 +69,6 @@ def one_hot(y, n=10):
     out[np.arange(len(y)), y] = 1.0
     return out
 
-# ---------------------------------------------------------------------------
-# Network factory
-# ---------------------------------------------------------------------------
 def build_network(hidden_size=128, dropout=0.0, reg_lambda=0.0):
     """CNN: Conv(1→8)→ReLU→Pool → Conv(8→16)→ReLU→Pool → Dense→Softmax."""
     net = Network(reg_lambda=reg_lambda)
@@ -88,15 +79,11 @@ def build_network(hidden_size=128, dropout=0.0, reg_lambda=0.0):
     net.add_layer(ReLU())
     net.add_layer(MaxPool2D(pool_size=2, stride=2))
     net.add_layer(Flatten())
-    # After two 2×2 pools on 28×28 input → 7×7×16 = 784 features
     net.add_layer(Layer(7 * 7 * 16, hidden_size, 'relu', dropout_rate=dropout))
     net.add_layer(Layer(hidden_size, 10, 'softmax', dropout_rate=0.0))
     net.set_loss('cross_entropy')
     return net
 
-# ---------------------------------------------------------------------------
-# Grid search
-# ---------------------------------------------------------------------------
 def grid_search(X_train, y_train, X_val, y_val, param_grid,
                 epochs=20, patience=4, verbose=False):
     """Try every combination in param_grid and return sorted results list."""
@@ -149,9 +136,6 @@ def grid_search(X_train, y_train, X_val, y_val, param_grid,
     results.sort(key=lambda r: r['best_val_acc'], reverse=True)
     return results
 
-# ---------------------------------------------------------------------------
-# Random search
-# ---------------------------------------------------------------------------
 def random_search(n_trials, X_train, y_train, X_val, y_val,
                   epochs=20, patience=4, seed=None, verbose=False):
     """Sample hyperparameters randomly and return sorted results list."""
@@ -164,7 +148,7 @@ def random_search(n_trials, X_train, y_train, X_val, y_val,
     print(f"{'='*60}")
 
     for trial in range(1, n_trials + 1):
-        lr          = float(10 ** np.random.uniform(-4, -2))   # 0.0001–0.01
+        lr          = float(10 ** np.random.uniform(-4, -2))
         batch_size  = int(np.random.choice([32, 64, 128]))
         hidden_size = int(np.random.choice([64, 128, 256]))
         dropout     = float(np.random.uniform(0.0, 0.5))
@@ -209,9 +193,6 @@ def random_search(n_trials, X_train, y_train, X_val, y_val,
     results.sort(key=lambda r: r['best_val_acc'], reverse=True)
     return results
 
-# ---------------------------------------------------------------------------
-# Learning-rate finder (LR range test)
-# ---------------------------------------------------------------------------
 def find_lr(net, X, y, batch_size=64, start_lr=1e-6, end_lr=1.0,
             num_steps=100, beta=0.98):
     """Geometrically increase LR over num_steps mini-batches; track loss.
@@ -237,11 +218,9 @@ def find_lr(net, X, y, batch_size=64, start_lr=1e-6, end_lr=1.0,
         net.backward(yb, pred)
         net.update(lr=lr)
 
-        # Exponential smoothing to stabilise noisy loss
         avg_loss  = beta * avg_loss + (1 - beta) * raw_loss
         smoothed  = avg_loss / (1 - beta ** (step + 1))
 
-        # Stop early if loss explodes
         if step > 5 and smoothed > 4 * best_loss:
             break
         if smoothed < best_loss:
@@ -253,9 +232,6 @@ def find_lr(net, X, y, batch_size=64, start_lr=1e-6, end_lr=1.0,
 
     return lrs, losses
 
-# ---------------------------------------------------------------------------
-# Pretty-print results table
-# ---------------------------------------------------------------------------
 def print_results_table(results, title='Results'):
     if not results:
         return
@@ -263,11 +239,9 @@ def print_results_table(results, title='Results'):
     print(f" {title}")
     print(f"{'='*70}")
 
-    # Collect all param keys (exclude internal keys)
     skip = {'best_val_acc', 'best_epoch', 'epochs_run', 'history'}
     param_keys = [k for k in results[0] if k not in skip]
 
-    # Header
     header = f"{'#':>3}  " + "  ".join(f"{k:>12}" for k in param_keys)
     header += f"  {'val_acc':>8}  {'best_ep':>7}  {'ep_run':>6}"
     print(header)
@@ -284,9 +258,6 @@ def print_results_table(results, title='Results'):
         row += f"  {r['best_val_acc']:>8.4f}  {r['best_epoch']:>7}  {r['epochs_run']:>6}"
         print(row)
 
-# ---------------------------------------------------------------------------
-# Visualisation helpers
-# ---------------------------------------------------------------------------
 def plot_search_results(results, prefix='grid'):
     """Bar chart of val_acc per trial + history curves of top-3 configs."""
     if not results:
@@ -294,7 +265,6 @@ def plot_search_results(results, prefix='grid'):
 
     n = len(results)
 
-    # ---- Figure 1: sorted bar chart ----
     fig, ax = plt.subplots(figsize=(max(8, n * 0.6), 5))
     accs   = [r['best_val_acc'] for r in results]
     labels = [str(i + 1) for i in range(n)]
@@ -316,7 +286,6 @@ def plot_search_results(results, prefix='grid'):
     plt.close()
     print(f"Saved {path}")
 
-    # ---- Figure 2: val_acc history for top-3 ----
     top_k = min(3, len(results))
     fig, axes = plt.subplots(1, top_k, figsize=(5 * top_k, 4), squeeze=False)
 
@@ -328,7 +297,6 @@ def plot_search_results(results, prefix='grid'):
         ax2 = ax.twinx()
         ax2.plot(ep, h['val_acc'],   label='val acc',   color='#2ecc71', linestyle='--')
 
-        # Annotation of best
         best_ep  = int(np.argmax(h['val_acc']))
         best_acc = h['val_acc'][best_ep]
         ax2.axvline(best_ep + 1, color='gray', linestyle=':', linewidth=1)
@@ -359,7 +327,7 @@ def plot_sensitivity(results, param_key, prefix='grid'):
     vals = [r[param_key] for r in results]
     accs = [r['best_val_acc'] for r in results]
     if len(set(vals)) < 2:
-        return  # nothing to compare
+        return
 
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.scatter(vals, accs, alpha=0.7, edgecolors='k', linewidths=0.5, s=60)
@@ -394,16 +362,12 @@ def plot_lr_finder(lrs, losses):
     print(f"Saved {path}")
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 if __name__ == '__main__':
-    # ---- Load a small MNIST subset ----------------------------------------
     print('Loading MNIST...')
     X_full, y_full, X_test_full, y_test_full = load_mnist()
 
     np.random.seed(42)
-    N_TRAIN = 3000   # keep small so search finishes fast
+    N_TRAIN = 3000
     N_VAL   = 500
     N_TEST  = 1000
 
@@ -415,15 +379,12 @@ if __name__ == '__main__':
     X_test      = X_test_full[:N_TEST].reshape(-1, 28, 28, 1)
     y_test_int  = y_test_full[:N_TEST]
 
-    Y_train = one_hot(y_train_int)   # one-hot for cross-entropy
+    Y_train = one_hot(y_train_int)
     Y_val   = one_hot(y_val_int)
     Y_test  = one_hot(y_test_int)
 
     print(f'Train: {X_train_raw.shape}  Val: {X_val_raw.shape}  Test: {X_test.shape}')
 
-    # =========================================================================
-    # 1. Baseline (no tuning)
-    # =========================================================================
     print('\n--- Baseline (lr=0.01, batch=64, hidden=128, no dropout, adam) ---')
     baseline_net = build_network(hidden_size=128, dropout=0.0)
     baseline_sched = LearningRateScheduler(initial_lr=0.01, decay_type='step',
@@ -436,16 +397,12 @@ if __name__ == '__main__':
     baseline_acc = max(baseline_history['val_acc'])
     print(f'\nBaseline best val_acc: {baseline_acc:.4f}')
 
-    # =========================================================================
-    # 2. Grid search
-    # =========================================================================
     param_grid = {
         'lr':          [0.01, 0.001],
         'batch_size':  [64, 128],
         'hidden_size': [64, 128],
         'dropout':     [0.0, 0.2],
     }
-    # 2×2×2×2 = 16 combinations. verbose=False so only summaries print.
     grid_results = grid_search(
         X_train_raw, Y_train, X_val_raw, Y_val,
         param_grid=param_grid, epochs=20, patience=4, verbose=False,
@@ -460,9 +417,6 @@ if __name__ == '__main__':
     print(f'  Params: lr={best_grid["lr"]}, batch={best_grid["batch_size"]}, '
           f'hidden={best_grid["hidden_size"]}, dropout={best_grid["dropout"]}')
 
-    # =========================================================================
-    # 3. Random search
-    # =========================================================================
     rand_results = random_search(
         n_trials=8,
         X_train=X_train_raw, y_train=Y_train,
@@ -476,9 +430,6 @@ if __name__ == '__main__':
     best_rand = rand_results[0]
     print(f'\nBest random config: val_acc={best_rand["best_val_acc"]:.4f}')
 
-    # =========================================================================
-    # 4. LR Finder (on a fresh network with best grid settings)
-    # =========================================================================
     print('\n--- LR Finder ---')
     lr_net = build_network(hidden_size=best_grid['hidden_size'],
                            dropout=best_grid['dropout'])
@@ -487,11 +438,7 @@ if __name__ == '__main__':
                           num_steps=80)
     plot_lr_finder(lrs, losses)
 
-    # =========================================================================
-    # 5. Train best config fully and evaluate on test set
-    # =========================================================================
     print('\n--- Training best config on full train+val, evaluating on test ---')
-    # Combine train + val for final training
     X_all = np.concatenate([X_train_raw, X_val_raw], axis=0)
     Y_all = np.concatenate([Y_train, Y_val], axis=0)
 
@@ -501,7 +448,6 @@ if __name__ == '__main__':
         initial_lr=best_grid['lr'], decay_type='step',
         step_size=8, decay_factor=0.5)
 
-    # Use val set as a dummy for early stopping even during "final" training
     final_history = final_net.train_with_history(
         X_all, Y_all, X_test, Y_test,
         epochs=30, lr=best_grid['lr'], lr_scheduler=final_sched,

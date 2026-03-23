@@ -51,7 +51,7 @@ class DataAugmentor:
         """
         X_aug = np.copy(X)
         for i in range(X_aug.shape[0]):
-            img = X_aug[i]  # (H, W, C)
+            img = X_aug[i]
 
             if _SCIPY_AVAILABLE and self.rotation_range > 0:
                 angle = np.random.uniform(-self.rotation_range, self.rotation_range)
@@ -78,10 +78,8 @@ class DataAugmentor:
 
     def _shift(self, img, dx, dy):
         if _SCIPY_AVAILABLE:
-            # img is (H, W, C); shift along (H, W) axes only
             return _scipy_shift(img, (dy, dx, 0), mode='constant', cval=0)
         else:
-            # Fallback: np.roll with zero-fill at boundary
             img = np.roll(img, dy, axis=0)
             img = np.roll(img, dx, axis=1)
             if dy > 0:
@@ -99,15 +97,12 @@ class DataAugmentor:
         zoomed = _scipy_zoom(img, (zoom_factor, zoom_factor, 1), mode='constant', cval=0)
         zh, zw = zoomed.shape[:2]
 
-        # Crop or pad back to original size
         out = np.zeros_like(img)
         if zoom_factor >= 1.0:
-            # Zoomed image is larger; center-crop
             y0 = (zh - h) // 2
             x0 = (zw - w) // 2
             out = zoomed[y0:y0 + h, x0:x0 + w, :]
         else:
-            # Zoomed image is smaller; center-pad
             y0 = (h - zh) // 2
             x0 = (w - zw) // 2
             out[y0:y0 + zh, x0:x0 + zw, :] = zoomed
