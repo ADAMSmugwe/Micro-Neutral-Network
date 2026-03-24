@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Digit Classifier</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Handwritten Digit Classifier</h1>
+    <p class="subtitle">Powered by a pure NumPy neural network (MLP, 784→128→64→10)</p>
+
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('draw')">Draw</button>
+      <button class="tab" onclick="showTab('upload')">Upload</button>
+    </div>
+
+    <!-- Draw tab -->
+    <div id="draw-tab" class="tab-content">
+      <canvas id="canvas" width="280" height="280"></canvas>
+      <div class="controls">
+        <button id="clearBtn" class="btn secondary">Clear</button>
+        <button id="predictBtn" class="btn primary">Predict</button>
+      </div>
+    </div>
+
+    <!-- Upload tab -->
+    <div id="upload-tab" class="tab-content hidden">
+      <div class="upload-area" id="dropZone">
+        <p>Drag &amp; drop an image here, or</p>
+        <label class="btn primary" for="fileInput">Choose File</label>
+        <input type="file" id="fileInput" accept="image/*" hidden />
+        <p id="fileName" class="file-name"></p>
+      </div>
+      <div class="controls">
+        <button id="uploadPredictBtn" class="btn primary">Predict</button>
+      </div>
+    </div>
+
+    <!-- Result -->
+    <div id="result" class="result hidden">
+      <div class="prediction-box">
+        <span class="label">Prediction</span>
+        <span id="digit" class="digit">–</span>
+        <span id="confidence" class="confidence"></span>
+      </div>
+      <div class="bar-chart" id="barChart"></div>
+    </div>
+
+    <div id="error" class="error hidden"></div>
+  </div>
+
+  <script>
+    // ── Tab switching ──────────────────────────────────────────
+    function showTab(name) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+      document.getElementById(name + '-tab').classList.remove('hidden');
+      event.target.classList.add('active');
+      hideResult();
+    }
+
+    // ── Canvas drawing ─────────────────────────────────────────
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    resetCanvas();
+
+    let drawing = false;
+    let lastX = 0, lastY = 0;
+
+    function getPos(e) {
+      const r = canvas.getBoundingClientRect();
+      if (e.touches) {
+        return { x: e.touches[0].clientX - r.left, y: e.touches[0].clientY - r.top };
+      }
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    }
+
+    canvas.addEventListener('mousedown', e => { drawing = true; const p = getPos(e); lastX = p.x; lastY = p.y; });
+    canvas.addEventListener('mouseup', () => drawing = false);
+    canvas.addEventListener('mouseleave', () => drawing = false);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); drawing = true; const p = getPos(e); lastX = p.x; lastY = p.y; });
+    canvas.addEventListener('touchend', () => drawing = false);
+    canvas.addEventListener('touchmove', e => { e.preventDefault(); draw(e); });
+
+    function draw(e) {
+      if (!drawing) return;
+      const p = getPos(e);
+      ctx.beginPath();
+      ctx.moveTo(lastX, lastY);
+      ctx.lineTo(p.x, p.y);
+      ctx.strokeStyle = 'white';
+      ctx.lineWidth = 18;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+      lastX = p.x; lastY = p.y;
+    }
+
+    function resetCanvas() {
+      ctx.fillStyle = 'black';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      resetCanvas();
+      hideResult();
+    });
+
+    // ── Canvas predict ─────────────────────────────────────────
+    document.getElementById('predictBtn').addEventListener('click', async () => {
+      const dataURL = canvas.toDataURL('image/png');
+      await sendPrediction(null, dataURL);
+    });
+
+    // ── File upload ────────────────────────────────────────────
+    let selectedFile = null;
+    const fileInput = document.getElementById('fileInput');
+    const dropZone = document.getElementById('dropZone');
+
+    fileInput.addEventListener('change', () => {
+      selectedFile = fileInput.files[0];
+      document.getElementById('fileName').textContent = selectedFile ? selectedFile.name : '';
+    });
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      selectedFile = e.dataTransfer.files[0];
+      document.getElementById('fileName').textContent = selectedFile ? selectedFile.name : '';
+    });
+
+    document.getElementById('uploadPredictBtn').addEventListener('click', async () => {
+      if (!selectedFile) { showError('Please select an image first.'); return; }
+      await sendPrediction(selectedFile, null);
+    });
+
+    // ── API call ───────────────────────────────────────────────
+    async function sendPrediction(file, dataURL) {
+      hideResult();
+      hideError();
+
+      try {
+        let response;
+        if (file) {
+          const formData = new FormData();
+          formData.append('file', file);
+          response = await fetch('/predict', { method: 'POST', body: formData });
+        } else {
+          response = await fetch('/predict', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image: dataURL })
+          });
+        }
+
+        const result = await response.json();
+        if (result.error) { showError(result.error); return; }
+        showResult(result);
+      } catch (err) {
+        showError('Request failed: ' + err.message);
+      }
+    }
+
+    // ── Display helpers ────────────────────────────────────────
+    function showResult(result) {
+      document.getElementById('digit').textContent = result.prediction;
+      document.getElementById('confidence').textContent = result.confidence + '% confidence';
+
+      const chart = document.getElementById('barChart');
+      chart.innerHTML = '';
+      const probs = result.probabilities;
+      const maxVal = Math.max(...Object.values(probs));
+
+      for (let i = 0; i <= 9; i++) {
+        const pct = probs[i] ?? 0;
+        const isTop = parseInt(result.prediction) === i;
+        const row = document.createElement('div');
+        row.className = 'bar-row';
+        row.innerHTML = `
+          <span class="bar-label">${i}</span>
+          <div class="bar-track">
+            <div class="bar-fill ${isTop ? 'top' : ''}" style="width: ${(pct / (maxVal || 1)) * 100}%"></div>
+          </div>
+          <span class="bar-pct">${pct.toFixed(1)}%</span>`;
+        chart.appendChild(row);
+      }
+
+      document.getElementById('result').classList.remove('hidden');
+    }
+
+    function hideResult() { document.getElementById('result').classList.add('hidden'); }
+    function showError(msg) { const el = document.getElementById('error'); el.textContent = msg; el.classList.remove('hidden'); }
+    function hideError() { document.getElementById('error').classList.add('hidden'); }
+  </script>
+</body>
+</html>
