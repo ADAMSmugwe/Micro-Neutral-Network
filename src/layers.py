@@ -392,3 +392,196 @@ class BatchNorm:
             dZ = dout * self.gamma / np.sqrt(self.running_var + self.eps)
 
         return dZ
+
+
+class ConvBatchNorm:
+    """Batch normalization for conv layers: normalizes over (batch, H, W), one scale/shift per channel."""
+
+    def __init__(self, n_channels, eps=1e-8, momentum=0.9):
+        self.n_channels = n_channels
+        self.eps = eps
+        self.momentum = momentum
+
+        self.gamma = np.ones((1, 1, 1, n_channels))
+        self.beta = np.zeros((1, 1, 1, n_channels))
+        self.running_mean = np.zeros((1, 1, 1, n_channels))
+        self.running_var = np.ones((1, 1, 1, n_channels))
+
+        self.training = True
+
+        self.x_norm = None
+        self.x_centered = None
+        self.std = None
+        self._n = None   # batch * h * w
+
+        self.dgamma = None
+        self.dbeta = None
+        self.v_gamma = np.zeros_like(self.gamma)
+        self.v_beta = np.zeros_like(self.beta)
+
+    def forward(self, Z):
+        # Z: (batch, h, w, c)
+        if self.training:
+            self._n = Z.shape[0] * Z.shape[1] * Z.shape[2]
+            mean = np.mean(Z, axis=(0, 1, 2), keepdims=True)   # (1,1,1,c)
+            var  = np.var(Z,  axis=(0, 1, 2), keepdims=True)
+            self.std = np.sqrt(var + self.eps)
+            self.x_centered = Z - mean
+            self.x_norm = self.x_centered / self.std
+
+            self.running_mean = self.momentum * self.running_mean + (1 - self.momentum) * mean
+            self.running_var  = self.momentum * self.running_var  + (1 - self.momentum) * var
+
+            return self.gamma * self.x_norm + self.beta
+        else:
+            x_norm = (Z - self.running_mean) / np.sqrt(self.running_var + self.eps)
+            return self.gamma * x_norm + self.beta
+
+    def backward(self, dout):
+        # dout: (batch, h, w, c)
+        self.dgamma = np.sum(dout * self.x_norm,  axis=(0, 1, 2), keepdims=True)
+        self.dbeta  = np.sum(dout,                axis=(0, 1, 2), keepdims=True)
+
+        dx_norm = dout * self.gamma
+        dvar    = np.sum(dx_norm * self.x_centered * -0.5 * self.std ** (-3),
+                         axis=(0, 1, 2), keepdims=True)
+        dmean   = (np.sum(dx_norm * -1.0 / self.std, axis=(0, 1, 2), keepdims=True)
+                   + dvar * np.mean(-2.0 * self.x_centered, axis=(0, 1, 2), keepdims=True))
+
+        dZ = ((dx_norm / self.std)
+              + (dvar * 2.0 * self.x_centered / self._n)
+              + (dmean / self._n))
+        return dZ
+
+
+class GlobalAvgPool2D:
+    """Average-pool the spatial dimensions, outputting (batch, channels)."""
+
+    def forward(self, X):
+        # X: (batch, h, w, c)
+        self._input_shape = X.shape
+        return np.mean(X, axis=(1, 2))   # (batch, c)
+
+    def backward(self, dout):
+        batch, h, w, c = self._input_shape
+        # dout: (batch, c) — distribute gradient equally to every spatial position
+        return (dout[:, np.newaxis, np.newaxis, :] / (h * w)) * np.ones((batch, h, w, c))
+
+
+class ResidualBlock:
+    """Two 3x3 conv layers with a skip connection (He et al. 2016).
+
+    When stride > 1 or channels change, a 1x1 projection convolution
+    is used on the shortcut path so shapes match before addition.
+    """
+
+    def __init__(self, in_channels, out_channels, stride=1):
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.stride = stride
+
+        # --- main path ---
+        self.conv1 = Conv2D(in_channels, out_channels, filter_size=3, stride=stride, padding=1)
+        self.bn1   = ConvBatchNorm(out_channels)
+        self.relu1 = ReLU()
+
+        self.conv2 = Conv2D(out_channels, out_channels, filter_size=3, stride=1, padding=1)
+        self.bn2   = ConvBatchNorm(out_channels)
+
+        # --- shortcut path ---
+        if stride != 1 or in_channels != out_channels:
+            self.shortcut    = Conv2D(in_channels, out_channels, filter_size=1, stride=stride, padding=0)
+            self.shortcut_bn = ConvBatchNorm(out_channels)
+        else:
+            self.shortcut    = None
+            self.shortcut_bn = None
+
+        self.relu_out = ReLU()
+        self._training = True
+
+    # ── training property propagates to all sub-layers ──────────────────────
+    @property
+    def training(self):
+        return self._training
+
+    @training.setter
+    def training(self, value):
+        self._training = value
+        for layer in self._all_sublayers():
+            if hasattr(layer, 'training'):
+                layer.training = value
+
+    def _all_sublayers(self):
+        layers = [self.conv1, self.bn1, self.relu1,
+                  self.conv2, self.bn2, self.relu_out]
+        if self.shortcut is not None:
+            layers += [self.shortcut, self.shortcut_bn]
+        return layers
+
+    # ── forward ─────────────────────────────────────────────────────────────
+    def forward(self, X):
+        # main path
+        out = self.conv1.forward(X)
+        out = self.bn1.forward(out)
+        out = self.relu1.forward(out)
+
+        out = self.conv2.forward(out)
+        out = self.bn2.forward(out)
+
+        # shortcut path
+        if self.shortcut is not None:
+            identity = self.shortcut.forward(X)
+            identity = self.shortcut_bn.forward(identity)
+        else:
+            identity = X
+
+        out = out + identity
+        out = self.relu_out.forward(out)
+        return out
+
+    # ── backward ────────────────────────────────────────────────────────────
+    def backward(self, dout):
+        # gradient through final ReLU
+        dout = self.relu_out.backward(dout)
+
+        # gradient splits at the addition — copy to both branches
+        d_main     = dout.copy()
+        d_identity = dout.copy()
+
+        # main path (right to left)
+        d_main = self.bn2.backward(d_main)
+        d_main = self.conv2.backward(d_main)
+        d_main = self.relu1.backward(d_main)
+        d_main = self.bn1.backward(d_main)
+        d_main = self.conv1.backward(d_main)
+
+        # shortcut path
+        if self.shortcut is not None:
+            d_identity = self.shortcut_bn.backward(d_identity)
+            d_identity = self.shortcut.backward(d_identity)
+
+        return d_main + d_identity
+
+    # ── parameter update (momentum SGD, matches Network.update behaviour) ───
+    def update(self, lr=0.01, momentum=0.0, optimizer='sgd', beta1=0.9, beta2=0.999, eps=1e-8):
+        conv_layers = [self.conv1, self.conv2]
+        bn_layers   = [self.bn1, self.bn2]
+        if self.shortcut is not None:
+            conv_layers.append(self.shortcut)
+            bn_layers.append(self.shortcut_bn)
+
+        for layer in conv_layers:
+            if layer.d_filters is None:
+                continue
+            layer.v_filters = momentum * layer.v_filters - lr * layer.d_filters
+            layer.v_biases  = momentum * layer.v_biases  - lr * layer.d_biases
+            layer.filters  += layer.v_filters
+            layer.biases   += layer.v_biases
+
+        for layer in bn_layers:
+            if layer.dgamma is None:
+                continue
+            layer.v_gamma = momentum * layer.v_gamma - lr * layer.dgamma
+            layer.v_beta  = momentum * layer.v_beta  - lr * layer.dbeta
+            layer.gamma  += layer.v_gamma
+            layer.beta   += layer.v_beta
