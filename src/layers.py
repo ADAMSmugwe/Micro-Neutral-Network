@@ -585,3 +585,183 @@ class ResidualBlock:
             layer.v_beta  = momentum * layer.v_beta  - lr * layer.dbeta
             layer.gamma  += layer.v_gamma
             layer.beta   += layer.v_beta
+
+
+class ChannelAttention:
+    """Squeeze-and-Excitation channel attention (Hu et al. 2018).
+
+    Squeezes spatial information via global average pooling, then learns
+    per-channel importance weights via two FC layers.  The weights rescale
+    every channel of the feature map.
+
+    Args:
+        channels:  Number of input/output channels.
+        reduction: Bottleneck ratio for the two FC layers (default 16).
+    """
+
+    def __init__(self, channels, reduction=16):
+        self.channels = channels
+        reduced = max(channels // reduction, 1)
+        self.gap = GlobalAvgPool2D()
+        self.fc1 = Layer(channels, reduced,  'relu')
+        self.fc2 = Layer(reduced,  channels, 'sigmoid')
+        self._training = True
+
+    # ── training flag propagates to FC sub-layers ────────────────────────────
+    @property
+    def training(self):
+        return self._training
+
+    @training.setter
+    def training(self, value):
+        self._training = value
+        self.fc1.training = value
+        self.fc2.training = value
+
+    # ── forward ─────────────────────────────────────────────────────────────
+    def forward(self, X):
+        # X: (batch, h, w, c)
+        self._X = X
+        squeezed   = self.gap.forward(X)            # (batch, c)
+        excitation = self.fc1.forward(squeezed)     # (batch, reduced)  relu
+        excitation = self.fc2.forward(excitation)   # (batch, c)        sigmoid
+        # reshape to (batch, 1, 1, c) for broadcasting over spatial dims
+        self._excitation = excitation[:, np.newaxis, np.newaxis, :]
+        return X * self._excitation                 # (batch, h, w, c)
+
+    # ── backward ────────────────────────────────────────────────────────────
+    def backward(self, dout):
+        # output = X * excitation  (excitation broadcast over h, w)
+        dX           = dout * self._excitation                          # (batch, h, w, c)
+        d_excitation = np.sum(dout * self._X, axis=(1, 2))             # (batch, c)
+        # fc2 and fc1 handle their own activation derivatives internally
+        d2   = self.fc2.backward(d_excitation)
+        d1   = self.fc1.backward(d2)
+        d_gap = self.gap.backward(d1)                                   # (batch, h, w, c)
+        return dX + d_gap
+
+    # ── parameter update ────────────────────────────────────────────────────
+    def update(self, lr=0.01, momentum=0.0, optimizer='sgd',
+               beta1=0.9, beta2=0.999, eps=1e-8):
+        for layer in [self.fc1, self.fc2]:
+            if layer.dW is None:
+                continue
+            if optimizer == 'adam':
+                layer.t += 1
+                g = layer.dW
+                layer.m_weights  = beta1 * layer.m_weights  + (1 - beta1) * g
+                layer.vw_weights = beta2 * layer.vw_weights + (1 - beta2) * (g ** 2)
+                m_hat = layer.m_weights  / (1 - beta1 ** layer.t)
+                v_hat = layer.vw_weights / (1 - beta2 ** layer.t)
+                layer.weights -= lr * m_hat / (np.sqrt(v_hat) + eps)
+                g_b = layer.db
+                layer.m_biases  = beta1 * layer.m_biases  + (1 - beta1) * g_b
+                layer.vw_biases = beta2 * layer.vw_biases + (1 - beta2) * (g_b ** 2)
+                m_hat_b = layer.m_biases  / (1 - beta1 ** layer.t)
+                v_hat_b = layer.vw_biases / (1 - beta2 ** layer.t)
+                layer.biases -= lr * m_hat_b / (np.sqrt(v_hat_b) + eps)
+            else:  # SGD + momentum
+                layer.v_weights = momentum * layer.v_weights - lr * layer.dW
+                layer.v_biases  = momentum * layer.v_biases  - lr * layer.db
+                layer.weights  += layer.v_weights
+                layer.biases   += layer.v_biases
+
+
+class SpatialAttention:
+    """Spatial attention via two 1×1 convolutions (from CBAM, Woo et al. 2018).
+
+    Projects channels to a small bottleneck with ReLU, then reduces to a
+    single-channel attention map with sigmoid.  Every channel of the input is
+    scaled by the learned spatial weight at that position.
+
+    Args:
+        channels:  Number of input/output channels.
+        reduction: Bottleneck ratio (default 16).
+    """
+
+    def __init__(self, channels, reduction=16):
+        reduced = max(channels // reduction, 1)
+        self.conv1 = Conv2D(channels, reduced, filter_size=1, padding=0)
+        self.conv2 = Conv2D(reduced,  1,       filter_size=1, padding=0)
+
+    # ── forward ─────────────────────────────────────────────────────────────
+    def forward(self, X):
+        # X: (batch, h, w, c)
+        self._X = X
+        a1 = self.conv1.forward(X)               # (batch, h, w, reduced)
+        self._pre_relu = a1
+        a1 = np.maximum(0, a1)                   # ReLU
+        a2 = self.conv2.forward(a1)              # (batch, h, w, 1)
+        self._attn = 1.0 / (1.0 + np.exp(-a2))  # sigmoid → attention map [0, 1]
+        return X * self._attn                    # broadcast over channels
+
+    # ── backward ────────────────────────────────────────────────────────────
+    def backward(self, dout):
+        # output = X * attn  (attn broadcast over c)
+        dX     = dout * self._attn                                      # (batch, h, w, c)
+        d_attn = np.sum(dout * self._X, axis=-1, keepdims=True)        # (batch, h, w, 1)
+        # sigmoid derivative: d(sigmoid)/dx = sigmoid*(1-sigmoid)
+        d_pre_sigmoid = d_attn * self._attn * (1.0 - self._attn)
+        # backprop through conv2
+        d_relu  = self.conv2.backward(d_pre_sigmoid)                    # (batch, h, w, reduced)
+        # backprop through ReLU
+        d_relu  = d_relu * (self._pre_relu > 0)
+        # backprop through conv1
+        d_conv1 = self.conv1.backward(d_relu)                          # (batch, h, w, c)
+        return dX + d_conv1
+
+    # ── parameter update (SGD + momentum; no Adam needed for conv) ───────────
+    def update(self, lr=0.01, momentum=0.0, optimizer='sgd',
+               beta1=0.9, beta2=0.999, eps=1e-8):
+        for conv in [self.conv1, self.conv2]:
+            if conv.d_filters is None:
+                continue
+            conv.v_filters = momentum * conv.v_filters - lr * conv.d_filters
+            conv.v_biases  = momentum * conv.v_biases  - lr * conv.d_biases
+            conv.filters  += conv.v_filters
+            conv.biases   += conv.v_biases
+
+
+class CBAM:
+    """Convolutional Block Attention Module (Woo et al. 2018).
+
+    Applies channel attention (which channels matter?) followed by spatial
+    attention (where matters?).  Drop-in after any conv layer or ResBlock.
+
+    Args:
+        channels:  Number of feature channels.
+        reduction: Bottleneck reduction ratio for both sub-modules (default 16).
+    """
+
+    def __init__(self, channels, reduction=16):
+        self.channel_attention = ChannelAttention(channels, reduction)
+        self.spatial_attention = SpatialAttention(channels, reduction)
+        self._training = True
+
+    # ── training flag propagates to channel-attention FC layers ─────────────
+    @property
+    def training(self):
+        return self._training
+
+    @training.setter
+    def training(self, value):
+        self._training = value
+        self.channel_attention.training = value
+
+    # ── forward ─────────────────────────────────────────────────────────────
+    def forward(self, X):
+        out = self.channel_attention.forward(X)
+        out = self.spatial_attention.forward(out)
+        return out
+
+    # ── backward ────────────────────────────────────────────────────────────
+    def backward(self, dout):
+        dout = self.spatial_attention.backward(dout)
+        dout = self.channel_attention.backward(dout)
+        return dout
+
+    # ── parameter update ────────────────────────────────────────────────────
+    def update(self, lr=0.01, momentum=0.0, optimizer='sgd',
+               beta1=0.9, beta2=0.999, eps=1e-8):
+        self.channel_attention.update(lr, momentum, optimizer, beta1, beta2, eps)
+        self.spatial_attention.update(lr, momentum, optimizer, beta1, beta2, eps)
