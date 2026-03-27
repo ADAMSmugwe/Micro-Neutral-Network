@@ -412,7 +412,7 @@ class ConvBatchNorm:
         self.x_norm = None
         self.x_centered = None
         self.std = None
-        self._n = None   # batch * h * w
+        self._n = None
 
         self.dgamma = None
         self.dbeta = None
@@ -420,10 +420,9 @@ class ConvBatchNorm:
         self.v_beta = np.zeros_like(self.beta)
 
     def forward(self, Z):
-        # Z: (batch, h, w, c)
         if self.training:
             self._n = Z.shape[0] * Z.shape[1] * Z.shape[2]
-            mean = np.mean(Z, axis=(0, 1, 2), keepdims=True)   # (1,1,1,c)
+            mean = np.mean(Z, axis=(0, 1, 2), keepdims=True)
             var  = np.var(Z,  axis=(0, 1, 2), keepdims=True)
             self.std = np.sqrt(var + self.eps)
             self.x_centered = Z - mean
@@ -438,7 +437,6 @@ class ConvBatchNorm:
             return self.gamma * x_norm + self.beta
 
     def backward(self, dout):
-        # dout: (batch, h, w, c)
         self.dgamma = np.sum(dout * self.x_norm,  axis=(0, 1, 2), keepdims=True)
         self.dbeta  = np.sum(dout,                axis=(0, 1, 2), keepdims=True)
 
@@ -458,13 +456,11 @@ class GlobalAvgPool2D:
     """Average-pool the spatial dimensions, outputting (batch, channels)."""
 
     def forward(self, X):
-        # X: (batch, h, w, c)
         self._input_shape = X.shape
-        return np.mean(X, axis=(1, 2))   # (batch, c)
+        return np.mean(X, axis=(1, 2))
 
     def backward(self, dout):
         batch, h, w, c = self._input_shape
-        # dout: (batch, c) — distribute gradient equally to every spatial position
         return (dout[:, np.newaxis, np.newaxis, :] / (h * w)) * np.ones((batch, h, w, c))
 
 
@@ -480,7 +476,6 @@ class ResidualBlock:
         self.out_channels = out_channels
         self.stride = stride
 
-        # --- main path ---
         self.conv1 = Conv2D(in_channels, out_channels, filter_size=3, stride=stride, padding=1)
         self.bn1   = ConvBatchNorm(out_channels)
         self.relu1 = ReLU()
@@ -488,7 +483,6 @@ class ResidualBlock:
         self.conv2 = Conv2D(out_channels, out_channels, filter_size=3, stride=1, padding=1)
         self.bn2   = ConvBatchNorm(out_channels)
 
-        # --- shortcut path ---
         if stride != 1 or in_channels != out_channels:
             self.shortcut    = Conv2D(in_channels, out_channels, filter_size=1, stride=stride, padding=0)
             self.shortcut_bn = ConvBatchNorm(out_channels)
@@ -499,7 +493,6 @@ class ResidualBlock:
         self.relu_out = ReLU()
         self._training = True
 
-    # ── training property propagates to all sub-layers ──────────────────────
     @property
     def training(self):
         return self._training
@@ -518,9 +511,7 @@ class ResidualBlock:
             layers += [self.shortcut, self.shortcut_bn]
         return layers
 
-    # ── forward ─────────────────────────────────────────────────────────────
     def forward(self, X):
-        # main path
         out = self.conv1.forward(X)
         out = self.bn1.forward(out)
         out = self.relu1.forward(out)
@@ -528,7 +519,6 @@ class ResidualBlock:
         out = self.conv2.forward(out)
         out = self.bn2.forward(out)
 
-        # shortcut path
         if self.shortcut is not None:
             identity = self.shortcut.forward(X)
             identity = self.shortcut_bn.forward(identity)
@@ -539,30 +529,24 @@ class ResidualBlock:
         out = self.relu_out.forward(out)
         return out
 
-    # ── backward ────────────────────────────────────────────────────────────
     def backward(self, dout):
-        # gradient through final ReLU
         dout = self.relu_out.backward(dout)
 
-        # gradient splits at the addition — copy to both branches
         d_main     = dout.copy()
         d_identity = dout.copy()
 
-        # main path (right to left)
         d_main = self.bn2.backward(d_main)
         d_main = self.conv2.backward(d_main)
         d_main = self.relu1.backward(d_main)
         d_main = self.bn1.backward(d_main)
         d_main = self.conv1.backward(d_main)
 
-        # shortcut path
         if self.shortcut is not None:
             d_identity = self.shortcut_bn.backward(d_identity)
             d_identity = self.shortcut.backward(d_identity)
 
         return d_main + d_identity
 
-    # ── parameter update (momentum SGD, matches Network.update behaviour) ───
     def update(self, lr=0.01, momentum=0.0, optimizer='sgd', beta1=0.9, beta2=0.999, eps=1e-8):
         conv_layers = [self.conv1, self.conv2]
         bn_layers   = [self.bn1, self.bn2]
@@ -607,7 +591,6 @@ class ChannelAttention:
         self.fc2 = Layer(reduced,  channels, 'sigmoid')
         self._training = True
 
-    # ── training flag propagates to FC sub-layers ────────────────────────────
     @property
     def training(self):
         return self._training
@@ -618,29 +601,22 @@ class ChannelAttention:
         self.fc1.training = value
         self.fc2.training = value
 
-    # ── forward ─────────────────────────────────────────────────────────────
     def forward(self, X):
-        # X: (batch, h, w, c)
         self._X = X
-        squeezed   = self.gap.forward(X)            # (batch, c)
-        excitation = self.fc1.forward(squeezed)     # (batch, reduced)  relu
-        excitation = self.fc2.forward(excitation)   # (batch, c)        sigmoid
-        # reshape to (batch, 1, 1, c) for broadcasting over spatial dims
+        squeezed   = self.gap.forward(X)
+        excitation = self.fc1.forward(squeezed)
+        excitation = self.fc2.forward(excitation)
         self._excitation = excitation[:, np.newaxis, np.newaxis, :]
-        return X * self._excitation                 # (batch, h, w, c)
+        return X * self._excitation
 
-    # ── backward ────────────────────────────────────────────────────────────
     def backward(self, dout):
-        # output = X * excitation  (excitation broadcast over h, w)
-        dX           = dout * self._excitation                          # (batch, h, w, c)
-        d_excitation = np.sum(dout * self._X, axis=(1, 2))             # (batch, c)
-        # fc2 and fc1 handle their own activation derivatives internally
+        dX           = dout * self._excitation
+        d_excitation = np.sum(dout * self._X, axis=(1, 2))
         d2   = self.fc2.backward(d_excitation)
         d1   = self.fc1.backward(d2)
-        d_gap = self.gap.backward(d1)                                   # (batch, h, w, c)
+        d_gap = self.gap.backward(d1)
         return dX + d_gap
 
-    # ── parameter update ────────────────────────────────────────────────────
     def update(self, lr=0.01, momentum=0.0, optimizer='sgd',
                beta1=0.9, beta2=0.999, eps=1e-8):
         for layer in [self.fc1, self.fc2]:
@@ -660,7 +636,7 @@ class ChannelAttention:
                 m_hat_b = layer.m_biases  / (1 - beta1 ** layer.t)
                 v_hat_b = layer.vw_biases / (1 - beta2 ** layer.t)
                 layer.biases -= lr * m_hat_b / (np.sqrt(v_hat_b) + eps)
-            else:  # SGD + momentum
+            else:
                 layer.v_weights = momentum * layer.v_weights - lr * layer.dW
                 layer.v_biases  = momentum * layer.v_biases  - lr * layer.db
                 layer.weights  += layer.v_weights
@@ -684,33 +660,24 @@ class SpatialAttention:
         self.conv1 = Conv2D(channels, reduced, filter_size=1, padding=0)
         self.conv2 = Conv2D(reduced,  1,       filter_size=1, padding=0)
 
-    # ── forward ─────────────────────────────────────────────────────────────
     def forward(self, X):
-        # X: (batch, h, w, c)
         self._X = X
-        a1 = self.conv1.forward(X)               # (batch, h, w, reduced)
+        a1 = self.conv1.forward(X)
         self._pre_relu = a1
-        a1 = np.maximum(0, a1)                   # ReLU
-        a2 = self.conv2.forward(a1)              # (batch, h, w, 1)
-        self._attn = 1.0 / (1.0 + np.exp(-a2))  # sigmoid → attention map [0, 1]
-        return X * self._attn                    # broadcast over channels
+        a1 = np.maximum(0, a1)
+        a2 = self.conv2.forward(a1)
+        self._attn = 1.0 / (1.0 + np.exp(-a2))
+        return X * self._attn
 
-    # ── backward ────────────────────────────────────────────────────────────
     def backward(self, dout):
-        # output = X * attn  (attn broadcast over c)
-        dX     = dout * self._attn                                      # (batch, h, w, c)
-        d_attn = np.sum(dout * self._X, axis=-1, keepdims=True)        # (batch, h, w, 1)
-        # sigmoid derivative: d(sigmoid)/dx = sigmoid*(1-sigmoid)
+        dX     = dout * self._attn
+        d_attn = np.sum(dout * self._X, axis=-1, keepdims=True)
         d_pre_sigmoid = d_attn * self._attn * (1.0 - self._attn)
-        # backprop through conv2
-        d_relu  = self.conv2.backward(d_pre_sigmoid)                    # (batch, h, w, reduced)
-        # backprop through ReLU
+        d_relu  = self.conv2.backward(d_pre_sigmoid)
         d_relu  = d_relu * (self._pre_relu > 0)
-        # backprop through conv1
-        d_conv1 = self.conv1.backward(d_relu)                          # (batch, h, w, c)
+        d_conv1 = self.conv1.backward(d_relu)
         return dX + d_conv1
 
-    # ── parameter update (SGD + momentum; no Adam needed for conv) ───────────
     def update(self, lr=0.01, momentum=0.0, optimizer='sgd',
                beta1=0.9, beta2=0.999, eps=1e-8):
         for conv in [self.conv1, self.conv2]:
@@ -738,7 +705,6 @@ class CBAM:
         self.spatial_attention = SpatialAttention(channels, reduction)
         self._training = True
 
-    # ── training flag propagates to channel-attention FC layers ─────────────
     @property
     def training(self):
         return self._training
@@ -748,19 +714,16 @@ class CBAM:
         self._training = value
         self.channel_attention.training = value
 
-    # ── forward ─────────────────────────────────────────────────────────────
     def forward(self, X):
         out = self.channel_attention.forward(X)
         out = self.spatial_attention.forward(out)
         return out
 
-    # ── backward ────────────────────────────────────────────────────────────
     def backward(self, dout):
         dout = self.spatial_attention.backward(dout)
         dout = self.channel_attention.backward(dout)
         return dout
 
-    # ── parameter update ────────────────────────────────────────────────────
     def update(self, lr=0.01, momentum=0.0, optimizer='sgd',
                beta1=0.9, beta2=0.999, eps=1e-8):
         self.channel_attention.update(lr, momentum, optimizer, beta1, beta2, eps)

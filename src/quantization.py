@@ -16,7 +16,6 @@ quantized_memory_bytes()    – INT8 parameter bytes for a PTQ layer list
 import numpy as np
 
 
-# ── quantization math ────────────────────────────────────────────────────────
 
 class Quantizer:
     """Pure-static helpers for INT8 affine quantization.
@@ -32,7 +31,6 @@ class Quantizer:
     INT8_MIN: int = -128
     INT8_MAX: int =  127
 
-    # ── per-tensor ────────────────────────────────────────────────────────────
     @staticmethod
     def get_scale_and_zero_point(tensor: np.ndarray):
         """Compute per-tensor scale and zero_point from a float32 tensor."""
@@ -56,7 +54,6 @@ class Quantizer:
         """Map INT8 tensor → FP32 approximation."""
         return scale * (tensor.astype(np.float32) - zero_point)
 
-    # ── per-channel (one scale/zp per output column) ──────────────────────────
     @staticmethod
     def get_per_channel_params(weights: np.ndarray):
         """Per-column scale/zp for a (n_in, n_out) weight matrix.
@@ -90,7 +87,6 @@ class Quantizer:
         return out
 
 
-# ── fake quantization (for QAT) ──────────────────────────────────────────────
 
 class FakeQuantize:
     """Quantization-aware training layer (straight-through estimator).
@@ -115,11 +111,9 @@ class FakeQuantize:
         return Quantizer.dequantize(q, scale, zp)
 
     def backward(self, dout: np.ndarray) -> np.ndarray:
-        # Straight-through estimator: pass gradient unchanged.
         return dout
 
 
-# ── post-training quantization wrappers ──────────────────────────────────────
 
 class QuantizedLayer:
     """Inference-only wrapper that replaces FP32 weights with INT8 storage.
@@ -140,12 +134,10 @@ class QuantizedLayer:
         self.per_channel = per_channel
         self._quantized  = False
 
-        # populated by quantize_weights()
         self.q_weights  = None
-        self.scales     = None     # scalar or (n_out,) array
-        self.zps        = None     # scalar int or (n_out,) array
+        self.scales     = None
+        self.zps        = None
 
-    # ── weight quantization ───────────────────────────────────────────────────
     def quantize_weights(self):
         """Convert FP32 weights to INT8 and report the size change."""
         W = self.layer.weights
@@ -166,7 +158,6 @@ class QuantizedLayer:
               f"{W.nbytes:,} → {self.q_weights.nbytes:,} bytes  "
               f"({ratio:.1f}× smaller,  saved {saved:,} B)")
 
-    # ── inference forward ─────────────────────────────────────────────────────
     def forward(self, X: np.ndarray) -> np.ndarray:
         if self._quantized:
             if self.per_channel:
@@ -176,9 +167,8 @@ class QuantizedLayer:
         else:
             W = self.layer.weights
         z = np.dot(X, W) + self.layer.biases
-        return self.layer._activate(z)   # biases stay FP32
+        return self.layer._activate(z)
 
-    # ── size reporting ────────────────────────────────────────────────────────
     @property
     def memory_bytes(self) -> int:
         """Bytes used by this layer (INT8 weights + FP32 biases)."""
@@ -224,7 +214,6 @@ class QuantizedConv2D:
 
     def forward(self, X: np.ndarray) -> np.ndarray:
         if self._quantized:
-            # swap in dequantized filters for the duration of this forward pass
             orig_filters        = self.conv.filters
             self.conv.filters   = Quantizer.dequantize(self.q_filters, self.f_scale, self.f_zp)
             out                 = self.conv.forward(X)
@@ -244,7 +233,6 @@ class QuantizedConv2D:
         return int(self.conv.filters.nbytes + self.conv.biases.nbytes)
 
 
-# ── network-level helpers ─────────────────────────────────────────────────────
 
 def quantize_network(net, per_channel: bool = True):
     """Apply PTQ to every weight layer in *net*.
@@ -258,22 +246,19 @@ def quantize_network(net, per_channel: bool = True):
     net          : Network
     per_channel  : bool  Use per-channel quantization for dense layers.
     """
-    from src.layers import Conv2D  # local import to avoid circular dependency
+    from src.layers import Conv2D
 
     q_layers = []
     for layer in net.layers:
         if hasattr(layer, 'weights') and not hasattr(layer, 'filters'):
-            # Dense Layer
             ql = QuantizedLayer(layer, per_channel=per_channel)
             ql.quantize_weights()
             q_layers.append(ql)
         elif hasattr(layer, 'filters'):
-            # Conv2D
             qc = QuantizedConv2D(layer)
             qc.quantize_weights()
             q_layers.append(qc)
         else:
-            # ReLU, BatchNorm, pooling, Flatten, GlobalAvgPool2D, CBAM, etc.
             q_layers.append(layer)
 
     return q_layers
@@ -286,7 +271,6 @@ def infer(q_layers: list, X: np.ndarray) -> np.ndarray:
     return X
 
 
-# ── size utilities ────────────────────────────────────────────────────────────
 
 def model_memory_bytes(net) -> int:
     """Total FP32 parameter bytes in a Network."""
@@ -295,12 +279,11 @@ def model_memory_bytes(net) -> int:
         if hasattr(layer, 'weights'):
             total += layer.weights.nbytes
         if hasattr(layer, 'biases') and not hasattr(layer, 'weights'):
-            # biases on conv layers
             total += layer.biases.nbytes
         if hasattr(layer, 'filters'):
             total += layer.filters.nbytes
             total += layer.biases.nbytes
-        if hasattr(layer, 'gamma'):    # BatchNorm
+        if hasattr(layer, 'gamma'):
             total += layer.gamma.nbytes + layer.beta.nbytes
     return total
 

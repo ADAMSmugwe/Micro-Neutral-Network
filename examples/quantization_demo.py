@@ -31,7 +31,6 @@ from src.quantization import (
     model_memory_bytes, quantized_memory_bytes,
 )
 
-# ── data ─────────────────────────────────────────────────────────────────────
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), '..', 'data', 'mnist')
 BASE_URL  = 'https://storage.googleapis.com/cvdf-datasets/mnist/'
@@ -77,7 +76,6 @@ def one_hot(y, n=10):
     return out
 
 
-# ── accuracy helpers ──────────────────────────────────────────────────────────
 
 def net_accuracy(net, X, y_int, batch=256):
     net.eval_mode()
@@ -94,7 +92,6 @@ def q_accuracy(q_layers, X, y_int, batch=256):
     return float(np.mean(np.concatenate(preds) == y_int))
 
 
-# ── network builders ──────────────────────────────────────────────────────────
 
 def build_baseline():
     """Standard FP32 MLP: 784 → 256 → 128 → 10."""
@@ -115,9 +112,9 @@ def build_qat():
     Input → FakeQ → Dense → FakeQ → Dense → FakeQ → Dense → output
     """
     net = Network()
-    net.add_layer(FakeQuantize())          # quantise input activations
+    net.add_layer(FakeQuantize())
     net.add_layer(Layer(784, 256, 'relu'))
-    net.add_layer(FakeQuantize())          # quantise hidden activations
+    net.add_layer(FakeQuantize())
     net.add_layer(Layer(256, 128, 'relu'))
     net.add_layer(FakeQuantize())
     net.add_layer(Layer(128,  10, 'softmax'))
@@ -125,7 +122,6 @@ def build_qat():
     return net
 
 
-# ── training ──────────────────────────────────────────────────────────────────
 
 def train(net, X_tr, Y_tr, X_te, y_te, epochs, lr, momentum, batch_size, tag):
     print(f'\n{"─" * 56}')
@@ -157,7 +153,6 @@ def train(net, X_tr, Y_tr, X_te, y_te, epochs, lr, momentum, batch_size, tag):
     return train_losses, test_accs
 
 
-# ── quantization-error analysis ───────────────────────────────────────────────
 
 def weight_quantization_error(net):
     """Mean absolute reconstruction error across all dense weight matrices."""
@@ -173,7 +168,6 @@ def weight_quantization_error(net):
     return float(np.mean(errors)) if errors else 0.0
 
 
-# ── main ─────────────────────────────────────────────────────────────────────
 
 def main():
     print('Loading MNIST...')
@@ -183,7 +177,6 @@ def main():
     N_TRAIN, N_TEST = 8000, 2000
     idx = np.random.permutation(len(X_tr_full))
 
-    # Flatten 28×28 → 784 for MLP
     X_tr = X_tr_full[idx[:N_TRAIN]].reshape(-1, 784)
     y_tr = y_tr_full[idx[:N_TRAIN]]
     X_te = X_te_full[:N_TEST].reshape(-1, 784)
@@ -200,7 +193,6 @@ def main():
     print(f'\nHyperparameters: epochs={EPOCHS}, batch={BATCH_SIZE}, '
           f'lr={LR}, momentum={MOMENTUM}')
 
-    # ── 1. Baseline ───────────────────────────────────────────────────────
     baseline_net = build_baseline()
     bl_losses, bl_accs = train(
         baseline_net, X_tr, Y_tr, X_te, y_te,
@@ -210,7 +202,6 @@ def main():
     baseline_acc = net_accuracy(baseline_net, X_te, y_te)
     baseline_mb  = model_memory_bytes(baseline_net) / 1024 / 1024
 
-    # ── 2. Post-training quantization (PTQ) ───────────────────────────────
     print(f'\n{"─" * 56}')
     print('  Applying PTQ (per-channel INT8) to baseline weights ...')
     print(f'{"─" * 56}')
@@ -219,7 +210,6 @@ def main():
     ptq_mb      = quantized_memory_bytes(ptq_layers) / 1024 / 1024
     ptq_drop    = baseline_acc - ptq_acc
 
-    # ── 3. Quantization-aware training (QAT) ─────────────────────────────
     qat_net = build_qat()
     qat_losses, qat_accs = train(
         qat_net, X_tr, Y_tr, X_te, y_te,
@@ -228,7 +218,6 @@ def main():
     )
     qat_fp32_acc = net_accuracy(qat_net, X_te, y_te)
 
-    # Convert QAT-trained weights to INT8
     print(f'\n{"─" * 56}')
     print('  Applying PTQ to QAT-trained weights ...')
     print(f'{"─" * 56}')
@@ -237,11 +226,9 @@ def main():
     qat_mb       = quantized_memory_bytes(qat_q_layers) / 1024 / 1024
     qat_drop     = qat_fp32_acc - qat_q_acc
 
-    # ── 4. Weight quantization-error detail ───────────────────────────────
     bl_err  = weight_quantization_error(baseline_net)
     qat_err = weight_quantization_error(qat_net)
 
-    # ── 5. Summary ────────────────────────────────────────────────────────
     print(f'\n{"═" * 68}')
     print('  FINAL COMPARISON')
     print(f'{"═" * 68}')
@@ -264,7 +251,6 @@ def main():
     print(f'    • Memory saved by INT8:  ~{baseline_mb - ptq_mb:.3f} MB  '
           f'({100*(1 - ptq_mb/baseline_mb):.1f}% reduction)')
 
-    # ── 6. INT8 arithmetic demo ───────────────────────────────────────────
     print(f'\n  INT8 Arithmetic Walkthrough')
     print(f'  {"─" * 44}')
     W_sample = baseline_net.layers[0].weights[:5, :5]
@@ -279,7 +265,6 @@ def main():
     print(f'  {np.round(W_rec, 6)}')
     print(f'\n  Mean absolute error: {mae:.8f}')
 
-    # ── 7. Comparison plot ────────────────────────────────────────────────
     try:
         import matplotlib
         matplotlib.use('Agg')
@@ -288,7 +273,6 @@ def main():
         epochs_range = range(1, EPOCHS + 1)
         fig, axes = plt.subplots(1, 3, figsize=(15, 4))
 
-        # Training loss
         axes[0].plot(epochs_range, bl_losses,  'b-o', label='Baseline FP32', markersize=4)
         axes[0].plot(epochs_range, qat_losses, 'g-o', label='QAT FP32',      markersize=4)
         axes[0].set_xlabel('Epoch')
@@ -297,10 +281,8 @@ def main():
         axes[0].legend()
         axes[0].grid(True, alpha=0.3)
 
-        # Test accuracy
         axes[1].plot(epochs_range, bl_accs,  'b-o', label='Baseline FP32', markersize=4)
         axes[1].plot(epochs_range, qat_accs, 'g-o', label='QAT FP32',      markersize=4)
-        # horizontal lines for post-quantization accuracy
         axes[1].axhline(ptq_acc,   color='b', linestyle='--', linewidth=1.2,
                         label=f'Baseline PTQ  ({ptq_acc:.4f})')
         axes[1].axhline(qat_q_acc, color='g', linestyle='--', linewidth=1.2,
@@ -311,7 +293,6 @@ def main():
         axes[1].legend(fontsize=8)
         axes[1].grid(True, alpha=0.3)
 
-        # Memory bar chart
         labels = ['Baseline\n(FP32)', 'PTQ\n(INT8 weights)', 'QAT + PTQ\n(INT8 weights)']
         sizes  = [baseline_mb, ptq_mb, qat_mb]
         colors = ['#4C72B0', '#DD8452', '#55A868']

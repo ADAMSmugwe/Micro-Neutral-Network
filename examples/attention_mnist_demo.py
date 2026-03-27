@@ -26,7 +26,6 @@ from src.layers import (
 )
 from src.network import Network
 
-# ── data ────────────────────────────────────────────────────────────────────
 
 CACHE_DIR = os.path.join(os.path.dirname(__file__), '..', 'data', 'mnist')
 BASE_URL  = 'https://storage.googleapis.com/cvdf-datasets/mnist/'
@@ -80,7 +79,6 @@ def accuracy(net, X, y_int, batch_size=128):
     return float(np.mean(np.concatenate(preds) == y_int))
 
 
-# ── network builders ─────────────────────────────────────────────────────────
 
 def build_plain_cnn():
     """6 conv layers + BatchNorm, no skip connections (baseline).
@@ -103,9 +101,9 @@ def build_plain_cnn():
 
     cbn_relu(1, 16)
     cbn_relu(16, 16)
-    cbn_relu(16, 32, stride=2)   # 14×14
+    cbn_relu(16, 32, stride=2)
     cbn_relu(32, 32)
-    cbn_relu(32, 64, stride=2)   # 7×7
+    cbn_relu(32, 64, stride=2)
     cbn_relu(64, 64)
 
     net.add_layer(GlobalAvgPool2D())
@@ -169,7 +167,7 @@ def build_attention_resnet():
                                   (32, 32, 1), (32, 64, 2),
                                   (64, 64, 1)]:
         net.add_layer(ResidualBlock(in_c, out_c, stride=stride))
-        cbam = CBAM(out_c, reduction=8)   # reduction=8 keeps bottleneck ≥2
+        cbam = CBAM(out_c, reduction=8)
         net.add_layer(cbam)
         cbam_blocks.append(cbam)
 
@@ -179,7 +177,6 @@ def build_attention_resnet():
     return net, cbam_blocks
 
 
-# ── training helpers ─────────────────────────────────────────────────────────
 
 def train_one_epoch(net, X, Y, batch_size, lr, momentum):
     net.train_mode()
@@ -212,7 +209,6 @@ def run_experiment(name, net, X_train, Y_train, y_train, X_test, y_test,
     return train_losses, test_accs
 
 
-# ── attention-map visualisation ───────────────────────────────────────────────
 
 def visualize_attention(net, cbam_blocks, X_samples, y_samples, out_path):
     """Plot original images alongside the deepest CBAM spatial attention map."""
@@ -225,25 +221,21 @@ def visualize_attention(net, cbam_blocks, X_samples, y_samples, out_path):
         return
 
     net.eval_mode()
-    # Run forward pass to populate attention caches
     net.forward(X_samples)
 
-    # Use the last CBAM block's spatial attention map: shape (n, h, w, 1)
     last_cbam   = cbam_blocks[-1]
-    attn_maps   = last_cbam.spatial_attention._attn   # (n, h, w, 1)
+    attn_maps   = last_cbam.spatial_attention._attn
 
     n = len(X_samples)
     fig, axes = plt.subplots(2, n, figsize=(2.5 * n, 5))
     fig.suptitle('Spatial Attention Maps (last CBAM block)', fontsize=12)
 
     for idx in range(n):
-        # --- original image (upsampled to 28×28 for display) ---
         orig = X_samples[idx, :, :, 0]
         axes[0, idx].imshow(orig, cmap='gray', vmin=0, vmax=1)
         axes[0, idx].set_title(f'Label: {y_samples[idx]}', fontsize=9)
         axes[0, idx].axis('off')
 
-        # --- attention map (may be 7×7; displayed with nearest-neighbour zoom) ---
         attn = attn_maps[idx, :, :, 0]
         im = axes[1, idx].imshow(attn, cmap='hot', vmin=0, vmax=1,
                                   interpolation='nearest')
@@ -258,7 +250,6 @@ def visualize_attention(net, cbam_blocks, X_samples, y_samples, out_path):
     print(f'\n  Attention map saved to {os.path.normpath(out_path)}')
 
 
-# ── main ─────────────────────────────────────────────────────────────────────
 
 def main():
     print('Loading MNIST...')
@@ -284,7 +275,6 @@ def main():
     print(f'\nHyperparameters: epochs={EPOCHS}, batch={BATCH_SIZE}, '
           f'lr={LR}, momentum={MOMENTUM}')
 
-    # ── Plain CNN ─────────────────────────────────────────────────
     plain_net = build_plain_cnn()
     plain_losses, plain_accs = run_experiment(
         'Plain CNN  (6 conv layers, no skip connections)',
@@ -292,7 +282,6 @@ def main():
         EPOCHS, BATCH_SIZE, LR, MOMENTUM,
     )
 
-    # ── ResNet ────────────────────────────────────────────────────
     res_net = build_resnet()
     res_losses, res_accs = run_experiment(
         'ResNet  (5 residual blocks + stem)',
@@ -300,7 +289,6 @@ def main():
         EPOCHS, BATCH_SIZE, LR, MOMENTUM,
     )
 
-    # ── ResNet + CBAM attention ───────────────────────────────────
     attn_net, cbam_blocks = build_attention_resnet()
     attn_losses, attn_accs = run_experiment(
         'ResNet + CBAM  (5 residual blocks + CBAM attention)',
@@ -308,7 +296,6 @@ def main():
         EPOCHS, BATCH_SIZE, LR, MOMENTUM,
     )
 
-    # ── Summary table ─────────────────────────────────────────────
     print(f'\n{"═" * 66}')
     print('  FINAL COMPARISON')
     print(f'{"═" * 66}')
@@ -323,7 +310,6 @@ def main():
     print(f'  {"Epoch of best acc":<30}  {best_plain:>10d}  {best_res:>10d}  {best_attn:>11d}')
     print(f'{"═" * 66}')
 
-    # ── Per-epoch table ───────────────────────────────────────────
     print('\n  Per-epoch results:')
     print(f'  {"Ep":>3}  {"PlainLoss":>9}  {"ResLoss":>8}  {"AttnLoss":>9}  '
           f'{"PlainAcc":>9}  {"ResAcc":>7}  {"AttnAcc":>8}')
@@ -334,8 +320,6 @@ def main():
         print(f'  {i+1:>3}  {plain_losses[i]:>9.4f}  {res_losses[i]:>8.4f}  {attn_losses[i]:>9.4f}  '
               f'{plain_accs[i]:>9.4f}  {res_accs[i]:>7.4f}  {attn_accs[i]:>8.4f}{marker}')
 
-    # ── Attention visualisation ───────────────────────────────────
-    # Pick one example per digit class (0–9)
     vis_indices = []
     for digit in range(10):
         idxs = np.where(y_test == digit)[0]
@@ -348,7 +332,6 @@ def main():
                                   'attention_maps.png')
     visualize_attention(attn_net, cbam_blocks, X_vis, y_vis, attn_vis_path)
 
-    # ── Comparison plot ───────────────────────────────────────────
     try:
         import matplotlib
         matplotlib.use('Agg')
