@@ -97,6 +97,30 @@ class Network:
             X = layer.forward(X)
         return X
 
+    def forward_logits(self, X):
+        """Forward pass returning raw logits (pre-softmax).
+
+        Runs the full forward pass (caching activations for backward), then
+        returns the pre-activation value of the last layer when that layer uses
+        a softmax.  For all other final activations the output equals forward().
+        """
+        for layer in self.layers:
+            X = layer.forward(X)
+        last = self.layers[-1]
+        if hasattr(last, 'activation') and last.activation == 'softmax':
+            return last.z          # stored by Layer.forward before activation
+        return X
+
+    def _backward_from_grad(self, grad):
+        """Backward pass given an externally computed gradient.
+
+        Use this when the loss gradient has already been computed outside the
+        network (e.g. in a distillation trainer) instead of the usual
+        Network.backward() which derives the gradient from the built-in loss.
+        """
+        for layer in reversed(self.layers):
+            grad = layer.backward(grad)
+
     def loss(self, y_true, y_pred):
         data_loss = self.loss_func(y_true, y_pred)
         reg_loss = 0
