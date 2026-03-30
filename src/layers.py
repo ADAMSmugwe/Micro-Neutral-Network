@@ -39,10 +39,17 @@ class Layer:
         if 't' in params:
             self.t = params['t']
 
+    def freeze(self):
+        self.trainable = False
+
+    def unfreeze(self):
+        self.trainable = True
+
     def __init__(self, n_inputs, n_neurons, activation='relu', dropout_rate=0.0, init_method='auto'):
         self.activation = activation
         self.dropout_rate = dropout_rate
         self.training = True
+        self.trainable = True
 
         if init_method == 'auto':
             if activation in ['relu', 'leaky_relu']:
@@ -149,6 +156,13 @@ class Conv2D:
         self._col   = None
         self.v_filters = np.zeros_like(self.filters)
         self.v_biases  = np.zeros_like(self.biases)
+        self.trainable = True
+
+    def freeze(self):
+        self.trainable = False
+
+    def unfreeze(self):
+        self.trainable = True
 
     def forward(self, X, use_im2col=True):
         self._X_orig = X
@@ -356,6 +370,13 @@ class BatchNorm:
         self.dbeta = None
         self.v_gamma = np.zeros_like(self.gamma)
         self.v_beta = np.zeros_like(self.beta)
+        self.trainable = True
+
+    def freeze(self):
+        self.trainable = False
+
+    def unfreeze(self):
+        self.trainable = True
 
     def forward(self, Z):
         if self.training:
@@ -418,6 +439,13 @@ class ConvBatchNorm:
         self.dbeta = None
         self.v_gamma = np.zeros_like(self.gamma)
         self.v_beta = np.zeros_like(self.beta)
+        self.trainable = True
+
+    def freeze(self):
+        self.trainable = False
+
+    def unfreeze(self):
+        self.trainable = True
 
     def forward(self, Z):
         if self.training:

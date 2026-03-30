@@ -142,6 +142,8 @@ class Network:
 
     def update(self, lr=0.01, momentum=0.0, optimizer='sgd', beta1=0.9, beta2=0.999, eps=1e-8):
         for layer in self.layers:
+            if not getattr(layer, 'trainable', True):
+                continue
             # Composite layers (e.g. ResidualBlock) manage their own sub-layer updates
             if hasattr(layer, 'update') and callable(getattr(layer, 'update')):
                 layer.update(lr, momentum, optimizer, beta1, beta2, eps)
